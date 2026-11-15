@@ -1,0 +1,52 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8">
+<link rel="icon" href="logo.webp"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f2a5f">
+<title>SiamIT – งานของฉัน</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head><body>
+<!-- แถบหัว: โลโก้ + ชื่อหน้า + ปุ่มออกจากระบบ -->
+<header><div class="brand"><img class="hlogo" src="logo.webp" alt="Siam IT Thailand"><h1>งานของฉัน<small id="who"></small></h1></div><button onclick="logout()">ออกจากระบบ</button></header>
+<main id="main"></main><div id="toasts"></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script><script src="common.js"></script>
+<script>
+// me = ข้อมูลผู้ใช้ที่ล็อกอินอยู่ (ชื่อ/สิทธิ์จากตาราง profiles)
+let me;
+(async () => {
+  me = await guard(); if (!me) return;
+  $('#who').textContent = me.name;
+  await load();
+  sb.channel('live').on('postgres_changes', { event: '*', schema: 'public' }, load).subscribe();
+})();
+// ดึงงานของฉัน + สินค้า + ความเห็นที่เคยส่ง แล้ววาดหน้า
+async function load() {
+  const [t, p, f] = await Promise.all([
+    sb.from('tasks').select('*').eq('assigned_to', me.id).order('created_at', { ascending: false }),
+    sb.from('products').select('*'),
+    sb.from('feedback').select('*').eq('user_id', me.id).order('created_at', { ascending: false })]);
+  const keep = ($('#fb') || {}).value || '';
+  const F = f.data || [], P = p.data || [], T = t.data || [], todo = T.filter(x => x.status === 'todo');
+  $('#main').innerHTML = `<section class="hero ${todo.length ? 'bad' : 'ok'}"><b>${todo.length || '✓'}</b><span>${todo.length ? 'งานที่รอทำ' : 'ไม่มีงานค้าง'}</span></section>` +
+    todo.map(x => { const pr = P.find(y => y.id === x.product_id); return `<article class="card"><h3>${esc(x.title)}</h3>${x.note ? `<p class="mut">${esc(x.note)}</p>` : ''}
+      ${pr ? `<label style="margin-top:10px">ยอดคงเหลือใหม่ของ ${esc(pr.name)} (${esc(pr.unit)})<input id="q${x.id}" type="number" step="any" inputmode="decimal" value="${pr.qty}"></label>` : ''}
+      <button class="btn" onclick="done('${x.id}',${pr ? `'${pr.id}'` : 'null'})">เสร็จแล้ว</button></article>`; }).join('') +
+    T.filter(x => x.status === 'done').slice(0, 5).map(x => `<article class="card"><div class="row"><h3>${esc(x.title)}</h3><span class="tag grn">เสร็จแล้ว</span></div></article>`).join('') + feedbackBox(F);
+  if (keep) $('#fb').value = keep;
+}
+// กล่องส่งความเห็นถึงแอดมิน + ประวัติที่เคยส่ง
+function feedbackBox(F) {
+  return `<article class="card"><h3>อยากให้เพิ่มหรือปรับอะไรไหม?</h3><p class="mut">บอกแอดมินได้ เช่น สินค้าที่ควรมีเพิ่ม หรือสิ่งที่ใช้แล้วไม่สะดวก</p><label style="margin-top:10px"><textarea id="fb" rows="3" placeholder="พิมพ์ความเห็นที่นี่"></textarea></label><button class="btn" onclick="sendFb()">ส่งความเห็น</button></article>` +
+    F.slice(0, 5).map(x => `<article class="card"><div class="row"><p>${esc(x.message)}</p><span class="tag ${x.status === 'done' ? 'grn' : 'amb'}">${x.status === 'done' ? 'แอดมินอ่านแล้ว' : 'ส่งแล้ว'}</span></div></article>`).join('');
+}
+// ส่งความเห็นเข้าตาราง feedback
+async function sendFb() {
+  const m = $('#fb').value.trim(); if (!m) return toast('พิมพ์ความเห็นก่อนส่ง');
+  if (ok(await sb.from('feedback').insert({ user_id: me.id, message: m }))) { $('#fb').value = ''; toast('ส่งให้แอดมินแล้ว'); load(); }
+}
+// กด 'เสร็จแล้ว': อัปเดตยอดสินค้า (ถ้างานผูกกับสินค้า) แล้วปิดงาน
+async function done(id, pid) {
+  if (pid) { const q = $('#q' + id).value; if (q === '' || !ok(await sb.from('products').update({ qty: +q }).eq('id', pid))) return; }
+  if (ok(await sb.from('tasks').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id))) { toast('บันทึกแล้ว'); load(); }
+}
+</script></body></html>
