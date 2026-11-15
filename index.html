@@ -1,0 +1,45 @@
+<!doctype html><html lang="th"><head><meta charset="utf-8">
+<link rel="icon" href="logo.webp"><link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f2a5f">
+<title>SiamIT – เข้าสู่ระบบ</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css"></head><body>
+<!-- โครงหน้า: #pick = เลือกพนักงาน/แอดมิน, #f = ฟอร์มล็อกอิน (ซ่อนจนกว่าจะเลือก) -->
+<div class="login">
+<div id="pick"><img class="logo" src="logo.webp" alt="Siam IT Thailand"><h1>SiamIT</h1><p>เลือกประเภทผู้ใช้เพื่อเข้าสู่ระบบ</p>
+<a class="pick" href="#staff"><b>พนักงาน</b><span>ดูงานที่ได้รับและอัปเดตสต๊อก</span></a>
+<a class="pick" href="#admin"><b>แอดมิน</b><span>ดูของที่ขาดและมอบหมายงาน</span></a></div>
+<form id="f" hidden><a class="back" href="#">← เปลี่ยนประเภท</a>
+<h1 id="t"></h1><p id="p"></p>
+<label>อีเมล<input name="email" type="email" required autocomplete="username" inputmode="email"></label>
+<label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label>
+<button class="btn">เข้าสู่ระบบ</button></form>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+<script src="config.js"></script><script src="common.js"></script>
+<script>
+// ข้อความหัวฟอร์มของแต่ละประเภทผู้ใช้ - แก้คำได้ตรงนี้
+const L = { admin: ['เข้าสู่ระบบแอดมิน', 'ดูของที่ขาดและมอบหมายงาน'], staff: ['เข้าสู่ระบบพนักงาน', 'ดูงานที่ได้รับและอัปเดตสต๊อก'] };
+// role มาจากลิงก์: #staff หรือ #admin
+let role = '';
+// สลับระหว่างหน้าเลือกประเภท กับฟอร์มล็อกอิน
+function show() {
+  role = location.hash.slice(1); if (!L[role]) role = '';
+  $('#pick').hidden = !!role; $('#f').hidden = !role;
+  if (role) { $('#t').textContent = L[role][0]; $('#p').textContent = L[role][1]; }
+}
+addEventListener('hashchange', show); show();
+// ล็อกอินแล้วไปหน้าของตัวเอง: แอดมิน -> admin.html, พนักงาน -> staff.html
+const go = p => location.replace(p.role === 'admin' ? 'admin.html' : 'staff.html');
+profile().then(p => p && go(p));
+// กดเข้าสู่ระบบ: เช็กอีเมล/รหัส แล้วเช็กว่าบัญชีตรงกับประเภทที่เลือก
+$('#f').onsubmit = async e => {
+  e.preventDefault();
+  const { error } = await sb.auth.signInWithPassword(Object.fromEntries(new FormData(e.target)));
+  if (error) return toast('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+  const p = await profile();
+  if (p.role !== role) { await sb.auth.signOut(); return toast(role === 'admin' ? 'บัญชีนี้ไม่ใช่แอดมิน ให้เข้าทางพนักงาน' : 'บัญชีนี้เป็นแอดมิน ให้เข้าทางแอดมิน'); }
+  go(p);
+};
+</script></body></html>
