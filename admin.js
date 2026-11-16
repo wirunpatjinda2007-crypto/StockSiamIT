@@ -32,27 +32,51 @@ function render() {
 }
 // ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด
 const lvl = p => +p.qty <= 0 ? 'out' : pct(p) <= 0.25 ? 'crit' : 'low';
-// กราฟภาพรวมของที่ต้องเติม: แถบสรุปสถานะ + แท่งต่อสินค้า (เรียงตามความเร่งด่วน)
-// อยากเปลี่ยนจำนวนแถวที่โชว์ แก้เลข 8 ใน slice(0, 8) และข้อความด้านล่าง
-function chartShort(l) {
+const LV = { out: 'หมด', crit: 'เหลือน้อยมาก', low: 'ใกล้หมด' };
+// fl = ระดับที่กดกรองจากกราฟ ('' = ทั้งหมด), showAll = ขยายแท่งให้ครบทุกรายการ
+let fl = '', showAll = false;
+// กดแถบสีในกราฟ = กรองเฉพาะระดับนั้น (กดซ้ำ = ยกเลิก)
+const setFl = k => { fl = fl === k ? '' : k; showAll = false; render(); };
+// กราฟภาพรวมของที่ต้องเติม: แถบสรุปสถานะ (กดกรองได้) + แท่งต่อสินค้า (กดดูรายละเอียดได้)
+// l = ทุกรายการที่ต้องเติม, lf = รายการหลังกรอง
+// อยากเปลี่ยนจำนวนแถวที่โชว์ตอนแรก แก้เลข 8 ใน slice(0, 8)
+function chartShort(l, lf) {
   if (!l.length) return '';
   const c = { out: 0, crit: 0, low: 0 }; l.forEach(p => c[lvl(p)]++);
-  const seg = k => c[k] ? `<i class="seg s-${k}" style="flex:${c[k]}">${c[k]}</i>` : '';
-  const rows = l.slice(0, 8).map(p => {
+  const seg = k => c[k] ? `<button class="seg s-${k} ${fl === k ? 'on' : ''}" style="flex:${c[k]}" onclick="setFl('${k}')" aria-label="${LV[k]} ${c[k]} รายการ">${c[k]}</button>` : '';
+  const rows = (showAll ? lf : lf.slice(0, 8)).map(p => {
     const k = lvl(p), w = Math.max(0, Math.min(100, Math.round(pct(p) * 100)));
-    return `<div class="crow"><span class="cn">${esc(p.name)}</span><div class="ctrack"><i class="s-${k}" style="width:${w}%"></i></div><b class="cv v-${k}">${k === 'out' ? 'หมด' : w + '%'}</b></div>`;
+    return `<button class="crow" onclick="detail('${p.id}')"><span class="cn">${esc(p.name)}</span><div class="ctrack"><i class="s-${k}" style="width:${w}%"></i></div><b class="cv v-${k}">${k === 'out' ? 'หมด' : w + '%'}</b></button>`;
   }).join('');
   return `<section class="card chart"><h3>ภาพรวมของที่ขาด</h3>
-    <div class="stack">${seg('out')}${seg('crit')}${seg('low')}</div>
+    <div class="stack ${fl ? 'f' : ''}">${seg('out')}${seg('crit')}${seg('low')}</div>
     <div class="legend"><span class="l-out">หมด ${c.out}</span><span class="l-crit">เหลือน้อยมาก ${c.crit}</span><span class="l-low">ใกล้หมด ${c.low}</span></div>
-    ${rows}${l.length > 8 ? `<p class="mut">แสดง 8 รายการแรก จากทั้งหมด ${l.length} รายการ (ดูครบในการ์ดด้านล่าง)</p>` : ''}</section>`;
+    <p class="mut hint">แตะแถบสีเพื่อกรอง · แตะสินค้าเพื่อดูรายละเอียด</p>
+    ${rows}${lf.length > 8 ? `<button class="link" style="color:var(--acc)" onclick="showAll=!showAll;render()">${showAll ? 'ย่อรายการ' : 'ดูทั้งหมด ' + lf.length + ' รายการ'}</button>` : ''}</section>`;
+}
+// หน้าต่างรายละเอียดสินค้า (เด้งขึ้นเมื่อกดแท่งในกราฟ)
+function detail(id) {
+  const p = P.find(x => x.id === id); if (!p) return;
+  const k = lvl(p), r = Math.round(pct(p) * 100), open = T.some(t => t.product_id === id && t.status === 'todo');
+  const need = +(+p.min_qty - +p.qty).toFixed(2);
+  const d = $('#sheet');
+  d.innerHTML = `<h2>${esc(p.name)}</h2>
+  <div class="two dstat"><div><span class="mut">คงเหลือ</span><b class="v-${k}">${p.qty} ${esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div></div>
+  <div class="ctrack big"><i class="s-${k}" style="width:${Math.max(0, Math.min(100, r))}%"></i></div>
+  <p class="mut" style="margin:8px 0 4px">${k === 'out' ? 'หมดแล้ว' : 'เหลือ ' + r + '% ของขั้นต่ำ'}${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}</p>
+  ${open ? '<p class="mut">มีงานเติมของที่ยังไม่เสร็จ</p>' : ''}
+  <div class="acts" style="margin-top:14px"><button type="button" class="btn ghost" onclick="$('#sheet').close()">ปิด</button>
+  ${open ? `<button type="button" class="btn" onclick="$('#sheet').close();openProd('${id}')">แก้ไขสินค้า</button>` : `<button type="button" class="btn" onclick="$('#sheet').close();openTask('${id}')">สั่งงานเติมของ</button>`}</div>`;
+  d.showModal();
 }
 // แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): ตัวเลขรวม + กราฟภาพรวม + การ์ดสินค้าเรียงตามความเร่งด่วน
 function renderShort() {
   const l = low();
-  $('#main').innerHTML = `<section class="hero ${l.length ? 'bad' : 'ok'}"><b>${l.length || '✓'}</b><span>${l.length ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}</span></section>` + chartShort(l) +
-    (l.length ? '<p class="mut" style="margin:0 4px 12px">เรียงจากเหลือน้อยที่สุดขึ้นก่อน</p>' : '') +
-    l.map(p => {
+  if (fl && !l.some(p => lvl(p) === fl)) fl = '';
+  const lf = fl ? l.filter(p => lvl(p) === fl) : l;
+  $('#main').innerHTML = `<section class="hero ${l.length ? 'bad' : 'ok'}"><b>${l.length || '✓'}</b><span>${l.length ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}</span></section>` + chartShort(l, lf) +
+    (l.length ? `<p class="mut" style="margin:0 4px 12px">${fl ? 'แสดงเฉพาะ “' + LV[fl] + '” ' + lf.length + ' รายการ' : 'เรียงจากเหลือน้อยที่สุดขึ้นก่อน'}</p>` : '') +
+    lf.map(p => {
       const out = +p.qty <= 0, r = pct(p), urg = out || r <= 0.25, open = T.some(t => t.product_id === p.id && t.status === 'todo');
       return `<article class="card ${urg ? 'urg' : ''}"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}</p></div><span class="tag ${urg ? 'red' : 'amb'}">${out ? 'หมด' : urg ? 'เหลือน้อยมาก' : 'ใกล้หมด'}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
         (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
