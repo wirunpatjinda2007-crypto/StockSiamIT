@@ -30,10 +30,27 @@ function render() {
   const u = F.filter(x => x.status === 'todo').length; $('#fbn').hidden = !u; $('#fbn').textContent = u;
   ({ short: renderShort, prod: renderProd, task: renderTask, fb: renderFb })[tab]();
 }
-// แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): ตัวเลขรวม + การ์ดสินค้าเรียงตามความเร่งด่วน
+// ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด
+const lvl = p => +p.qty <= 0 ? 'out' : pct(p) <= 0.25 ? 'crit' : 'low';
+// กราฟภาพรวมของที่ต้องเติม: แถบสรุปสถานะ + แท่งต่อสินค้า (เรียงตามความเร่งด่วน)
+// อยากเปลี่ยนจำนวนแถวที่โชว์ แก้เลข 8 ใน slice(0, 8) และข้อความด้านล่าง
+function chartShort(l) {
+  if (!l.length) return '';
+  const c = { out: 0, crit: 0, low: 0 }; l.forEach(p => c[lvl(p)]++);
+  const seg = k => c[k] ? `<i class="seg s-${k}" style="flex:${c[k]}">${c[k]}</i>` : '';
+  const rows = l.slice(0, 8).map(p => {
+    const k = lvl(p), w = Math.max(0, Math.min(100, Math.round(pct(p) * 100)));
+    return `<div class="crow"><span class="cn">${esc(p.name)}</span><div class="ctrack"><i class="s-${k}" style="width:${w}%"></i></div><b class="cv v-${k}">${k === 'out' ? 'หมด' : w + '%'}</b></div>`;
+  }).join('');
+  return `<section class="card chart"><h3>ภาพรวมของที่ขาด</h3>
+    <div class="stack">${seg('out')}${seg('crit')}${seg('low')}</div>
+    <div class="legend"><span class="l-out">หมด ${c.out}</span><span class="l-crit">เหลือน้อยมาก ${c.crit}</span><span class="l-low">ใกล้หมด ${c.low}</span></div>
+    ${rows}${l.length > 8 ? `<p class="mut">แสดง 8 รายการแรก จากทั้งหมด ${l.length} รายการ (ดูครบในการ์ดด้านล่าง)</p>` : ''}</section>`;
+}
+// แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): ตัวเลขรวม + กราฟภาพรวม + การ์ดสินค้าเรียงตามความเร่งด่วน
 function renderShort() {
   const l = low();
-  $('#main').innerHTML = `<section class="hero ${l.length ? 'bad' : 'ok'}"><b>${l.length || '✓'}</b><span>${l.length ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}</span></section>` +
+  $('#main').innerHTML = `<section class="hero ${l.length ? 'bad' : 'ok'}"><b>${l.length || '✓'}</b><span>${l.length ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}</span></section>` + chartShort(l) +
     (l.length ? '<p class="mut" style="margin:0 4px 12px">เรียงจากเหลือน้อยที่สุดขึ้นก่อน</p>' : '') +
     l.map(p => {
       const out = +p.qty <= 0, r = pct(p), urg = out || r <= 0.25, open = T.some(t => t.product_id === p.id && t.status === 'todo');
