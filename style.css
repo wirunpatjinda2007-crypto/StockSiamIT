@@ -69,3 +69,20 @@ input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{out
 .logo{display:block;height:72px;background:#fff;border-radius:16px;padding:8px 14px;margin-bottom:20px;border:1px solid var(--line)}
 .brand{display:flex;align-items:center;gap:12px}
 .hlogo{height:42px;background:#fff;border-radius:12px;padding:5px 9px}
+/* กราฟภาพรวมของที่ขาด (หน้าแอดมิน > ขาดสต๊อก) */
+.chart h3{margin-bottom:12px}
+.s-out{background:var(--red)}
+.s-crit{background:color-mix(in srgb,var(--red) 55%,var(--amb))}
+.s-low{background:var(--amb)}
+.stack{display:flex;gap:3px;height:30px;border-radius:10px;overflow:hidden}
+.seg{display:flex;align-items:center;justify-content:center;min-width:30px;color:#fff;font:600 14px 'Prompt',sans-serif;font-style:normal}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:9px 0 16px;font-size:13px;color:var(--mut)}
+.legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:5px;background:var(--lc)}
+.l-out{--lc:var(--red)}.l-crit{--lc:color-mix(in srgb,var(--red) 55%,var(--amb))}.l-low{--lc:var(--amb)}
+.crow{display:grid;grid-template-columns:minmax(70px,34%) 1fr 44px;align-items:center;gap:8px;margin-bottom:10px;font-size:14px}
+.cn{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ctrack{height:12px;background:var(--accbg);border-radius:9px;overflow:hidden}
+.ctrack i{display:block;height:100%;border-radius:9px}
+.cv{font:600 13px 'Prompt',sans-serif;text-align:right}
+.v-out{color:var(--red)}.v-crit{color:color-mix(in srgb,var(--red) 55%,var(--amb))}.v-low{color:var(--amb)}
+@media(prefers-color-scheme:dark){.seg{color:#0a1226}}
