@@ -32,29 +32,48 @@ function render() {
 }
 // ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด
 const lvl = p => +p.qty <= 0 ? 'out' : pct(p) <= 0.25 ? 'crit' : 'low';
-const LV = { out: 'หมด', crit: 'เหลือน้อยมาก', low: 'ใกล้หมด' };
-// fl = ระดับที่กดกรองจากกราฟ ('' = ทั้งหมด), showAll = ขยายแท่งให้ครบทุกรายการ
-let fl = '', showAll = false;
-// กดแถบสีในกราฟ = กรองเฉพาะระดับนั้น (กดซ้ำ = ยกเลิก)
-const setFl = k => { fl = fl === k ? '' : k; showAll = false; render(); };
-// กราฟภาพรวมของที่ต้องเติม: แถบสรุปสถานะ (กดกรองได้) + แท่งต่อสินค้า (กดดูรายละเอียดได้)
-// l = ทุกรายการที่ต้องเติม, lf = รายการหลังกรอง
-// อยากเปลี่ยนจำนวนแถวที่โชว์ตอนแรก แก้เลข 8 ใน slice(0, 8)
-function chartShort(l, lf) {
-  if (!l.length) return '';
-  const c = { out: 0, crit: 0, low: 0 }; l.forEach(p => c[lvl(p)]++);
-  const seg = k => c[k] ? `<button class="seg s-${k} ${fl === k ? 'on' : ''}" style="flex:${c[k]}" onclick="setFl('${k}')" aria-label="${LV[k]} ${c[k]} รายการ">${c[k]}</button>` : '';
-  const rows = (showAll ? lf : lf.slice(0, 8)).map(p => {
-    const k = lvl(p), w = Math.max(0, Math.min(100, Math.round(pct(p) * 100)));
-    return `<button class="crow" onclick="detail('${p.id}')"><span class="cn">${esc(p.name)}</span><div class="ctrack"><i class="s-${k}" style="width:${w}%"></i></div><b class="cv v-${k}">${k === 'out' ? 'หมด' : w + '%'}</b></button>`;
+const LV = { out: 'หมด', crit: 'เหลือน้อยมาก', low: 'ใกล้หมด', ok: 'ปกติ' };
+// หมวดหมู่ของสินค้า (คอลัมน์ category ในตาราง products; ว่าง = ไม่ระบุหมวด)
+const NOCAT = 'ไม่ระบุหมวด';
+const catOf = p => String(p.category || '').trim() || NOCAT;
+// fl = ระดับที่กดกรองจากกราฟ, cat = หมวดที่กดกรอง ('' = ทั้งหมด), catList = รายชื่อหมวดที่แสดงอยู่ (ใช้อ้างด้วยเลขลำดับ)
+let fl = '', cat = '', catList = [];
+const setFl = k => { fl = fl === k ? '' : k; render(); };
+const setCat = i => { const k = catList[i]; cat = cat === k ? '' : k; render(); };
+const clearFilter = () => { fl = ''; cat = ''; render(); };
+const IC = {
+  box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>',
+  ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5h.01"/></svg>'
+};
+// กราฟโดนัท: แต่ละส่วนกดเพื่อกรองได้ (ส่วน 'ปกติ' กดแล้วไปแท็บสินค้า)
+function donut(c, total) {
+  const R = 54, C = 2 * Math.PI * R; let off = 0;
+  const arcs = ['out', 'crit', 'low', 'ok'].filter(k => c[k]).map(k => {
+    const len = c[k] / total * C, gap = c[k] < total ? 2 : 0;
+    const el = `<circle class="dn k-${k} ${fl === k ? 'on' : ''}" cx="70" cy="70" r="${R}" stroke-dasharray="${Math.max(0, len - gap)} ${C}" stroke-dashoffset="${-off}" onclick="${k === 'ok' ? "go('prod')" : "setFl('" + k + "')"}"/>`;
+    off += len; return el;
   }).join('');
-  return `<section class="card chart"><h3>ภาพรวมของที่ขาด</h3>
-    <div class="stack ${fl ? 'f' : ''}">${seg('out')}${seg('crit')}${seg('low')}</div>
-    <div class="legend"><span class="l-out">หมด ${c.out}</span><span class="l-crit">เหลือน้อยมาก ${c.crit}</span><span class="l-low">ใกล้หมด ${c.low}</span></div>
-    <p class="mut hint">แตะแถบสีเพื่อกรอง · แตะสินค้าเพื่อดูรายละเอียด</p>
-    ${rows}${lf.length > 8 ? `<button class="link" style="color:var(--acc)" onclick="showAll=!showAll;render()">${showAll ? 'ย่อรายการ' : 'ดูทั้งหมด ' + lf.length + ' รายการ'}</button>` : ''}</section>`;
+  return `<svg class="donut ${fl ? 'f' : ''}" viewBox="0 0 140 140" role="img" aria-label="สัดส่วนสถานะสต๊อก"><g transform="rotate(-90 70 70)">${arcs}</g><text class="dpct" x="70" y="72" text-anchor="middle">${Math.round(c.ok / total * 100)}%</text><text class="dsub" x="70" y="90" text-anchor="middle">ปกติ</text></svg>`;
 }
-// หน้าต่างรายละเอียดสินค้า (เด้งขึ้นเมื่อกดแท่งในกราฟ)
+// แดชบอร์ดหน้าขาดสต๊อก: การ์ดตัวเลข 3 ใบ + โดนัทสถานะ + สรุปตามหมวดหมู่ (ทุกส่วนกดได้)
+function dash() {
+  const total = P.length;
+  if (!total) return '<p class="mut">ยังไม่มีสินค้า ไปที่แท็บ “สินค้า” เพื่อเพิ่ม</p>';
+  const c = { out: 0, crit: 0, low: 0, ok: 0 }; P.forEach(p => c[+p.qty <= +p.min_qty ? lvl(p) : 'ok']++);
+  const n = c.out + c.crit + c.low;
+  const stat = (cls, ic, num, label, act) => `<button class="stat ${cls}" onclick="${act}"><span class="sic">${ic}</span><b>${num}</b><span>${label}</span></button>`;
+  const stats = `<div class="stats">${stat('blue', IC.box, total, 'สินค้าทั้งหมด', "go('prod')")}${stat('grn', IC.ok, c.ok, 'ปกติ', "go('prod')")}${stat(n ? 'red' : 'grn', n ? IC.warn : IC.ok, n, 'ต้องเติม', "$('#lst').scrollIntoView({behavior:'smooth'})")}</div>`;
+  const leg = ['ok', 'low', 'crit', 'out'].map(k => `<button class="dl l-${k} ${fl === k ? 'on' : ''}" onclick="${k === 'ok' ? "go('prod')" : "setFl('" + k + "')"}">${LV[k]}<b>${c[k]}</b></button>`).join('');
+  const donutCard = `<section class="card chart"><h3>สถานะสต๊อก</h3><div class="dwrap">${donut(c, total)}<div class="dleg">${leg}</div></div><p class="mut hint">แตะส่วนของโดนัทหรือรายการด้านข้างเพื่อกรองรายการด้านล่าง</p></section>`;
+  const cs = {}; P.forEach(p => { const k = catOf(p); const o = cs[k] || (cs[k] = { n: 0, ok: 0 }); o.n++; if (+p.qty > +p.min_qty) o.ok++; });
+  catList = Object.keys(cs).sort((a, b) => (cs[b].n - cs[b].ok) - (cs[a].n - cs[a].ok) || a.localeCompare(b, 'th'));
+  const showCat = !(catList.length === 1 && catList[0] === NOCAT);
+  const catCard = showCat ? `<section class="card chart"><h3>สรุปตามหมวดหมู่</h3>${catList.map((k, i) => { const o = cs[k], bad = o.n - o.ok, pc = Math.round(o.ok / o.n * 100);
+    return `<button class="ccat ${cat === k ? 'on' : ''}" onclick="setCat(${i})"><div class="top"><span>${esc(k)}</span><em>${o.ok}/${o.n} (${pc}%)${bad ? `<i>ต้องเติม ${bad}</i>` : ''}</em></div><div class="ctr ${bad ? 'bad' : ''}"><i style="width:${pc}%"></i></div></button>`; }).join('')}<p class="mut hint">แตะหมวดเพื่อดูเฉพาะของที่ต้องเติมในหมวดนั้น</p></section>` : '';
+  return stats + donutCard + catCard;
+}
+// หน้าต่างรายละเอียดสินค้า (เด้งขึ้นเมื่อกดการ์ดสินค้า)
 function detail(id) {
   const p = P.find(x => x.id === id); if (!p) return;
   const k = lvl(p), r = Math.round(pct(p) * 100), open = T.some(t => t.product_id === id && t.status === 'todo');
@@ -63,23 +82,25 @@ function detail(id) {
   d.innerHTML = `<h2>${esc(p.name)}</h2>
   <div class="two dstat"><div><span class="mut">คงเหลือ</span><b class="v-${k}">${p.qty} ${esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div></div>
   <div class="ctrack big"><i class="s-${k}" style="width:${Math.max(0, Math.min(100, r))}%"></i></div>
-  <p class="mut" style="margin:8px 0 4px">${k === 'out' ? 'หมดแล้ว' : 'เหลือ ' + r + '% ของขั้นต่ำ'}${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}</p>
+  <p class="mut" style="margin:8px 0 4px">${k === 'out' ? 'หมดแล้ว' : 'เหลือ ' + r + '% ของขั้นต่ำ'}${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}${catOf(p) !== NOCAT ? ' · หมวด ' + esc(catOf(p)) : ''}</p>
   ${open ? '<p class="mut">มีงานเติมของที่ยังไม่เสร็จ</p>' : ''}
   <div class="acts" style="margin-top:14px"><button type="button" class="btn ghost" onclick="$('#sheet').close()">ปิด</button>
   ${open ? `<button type="button" class="btn" onclick="$('#sheet').close();openProd('${id}')">แก้ไขสินค้า</button>` : `<button type="button" class="btn" onclick="$('#sheet').close();openTask('${id}')">สั่งงานเติมของ</button>`}</div>`;
   d.showModal();
 }
-// แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): ตัวเลขรวม + กราฟภาพรวม + การ์ดสินค้าเรียงตามความเร่งด่วน
+// แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): แดชบอร์ด + การ์ดสินค้าที่ต้องเติม เรียงตามความเร่งด่วน (กดการ์ดเพื่อดูรายละเอียด)
 function renderShort() {
   const l = low();
   if (fl && !l.some(p => lvl(p) === fl)) fl = '';
-  const lf = fl ? l.filter(p => lvl(p) === fl) : l;
-  $('#main').innerHTML = `<section class="hero ${l.length ? 'bad' : 'ok'}"><b>${l.length || '✓'}</b><span>${l.length ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}</span></section>` + chartShort(l, lf) +
-    (l.length ? `<p class="mut" style="margin:0 4px 12px">${fl ? 'แสดงเฉพาะ “' + LV[fl] + '” ' + lf.length + ' รายการ' : 'เรียงจากเหลือน้อยที่สุดขึ้นก่อน'}</p>` : '') +
+  if (cat && !P.some(p => catOf(p) === cat)) cat = '';
+  const lf = l.filter(p => (!fl || lvl(p) === fl) && (!cat || catOf(p) === cat));
+  const f = [fl && LV[fl], cat].filter(Boolean).join(' · ');
+  $('#main').innerHTML = dash() + '<div id="lst"></div>' +
+    (l.length ? `<div class="row" style="margin:4px 4px 12px"><p class="mut">${f ? 'แสดงเฉพาะ ' + esc(f) + ' · ' + lf.length + ' รายการ' : 'ต้องเติม ' + l.length + ' รายการ · เรียงจากเหลือน้อยที่สุดขึ้นก่อน'}</p>${f ? '<button class="link" style="color:var(--acc);padding:0" onclick="clearFilter()">ล้างตัวกรอง</button>' : ''}</div>` : P.length ? '<p class="mut" style="text-align:center;margin:8px 0">✓ สต๊อกครบทุกรายการ</p>' : '') +
     lf.map(p => {
       const out = +p.qty <= 0, r = pct(p), urg = out || r <= 0.25, open = T.some(t => t.product_id === p.id && t.status === 'todo');
-      return `<article class="card ${urg ? 'urg' : ''}"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}</p></div><span class="tag ${urg ? 'red' : 'amb'}">${out ? 'หมด' : urg ? 'เหลือน้อยมาก' : 'ใกล้หมด'}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
-        (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
+      return `<article class="card tap ${urg ? 'urg' : ''}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}</p></div><span class="tag ${urg ? 'red' : 'amb'}">${out ? 'หมด' : urg ? 'เหลือน้อยมาก' : 'ใกล้หมด'}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
+        (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="event.stopPropagation();openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
     }).join('');
 }
 // แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
@@ -111,6 +132,8 @@ function openProd(id) {
   <div class="two"><label>คงเหลือ<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
   <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div>
   <label>หน่วย<input name="unit" value="${esc(p.unit)}"></label>
+  <label>หมวดหมู่ (ไม่บังคับ)<input name="category" list="cats" placeholder="เช่น ของกิน, ของใช้" value="${esc(p.category || '')}"></label>
+  <datalist id="cats">${[...new Set(P.map(catOf).filter(k => k !== NOCAT))].map(k => `<option value="${esc(k)}">`).join('')}</datalist>
   ${id ? `<button type="button" class="link red" onclick="delProd('${id}')">ลบสินค้านี้</button>` : ''}`,
     async v => ok(id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v)));
 }
