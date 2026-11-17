@@ -2,37 +2,85 @@
 <link rel="icon" href="logo.webp"><link rel="apple-touch-icon" href="apple-touch-icon.png">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f2a5f">
-<title>SiamIT – งานของฉัน</title>
+<title>SiamIT – นับสต๊อก</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css"></head><body>
 <!-- แถบหัว: โลโก้ + ชื่อหน้า + ปุ่มออกจากระบบ -->
-<header><div class="brand"><img class="hlogo" src="logo.webp" alt="Siam IT Thailand"><h1>งานของฉัน<small id="who"></small></h1></div><button onclick="logout()">ออกจากระบบ</button></header>
+<header><div class="brand"><img class="hlogo" src="logo.webp" alt="Siam IT Thailand"><h1>นับสต๊อก<small id="who"></small></h1></div><button onclick="logout()">ออกจากระบบ</button></header>
 <main id="main"></main><div id="toasts"></div>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script><script src="common.js"></script>
 <script>
 // me = ข้อมูลผู้ใช้ที่ล็อกอินอยู่ (ชื่อ/สิทธิ์จากตาราง profiles)
-let me;
+// P=สินค้า T=งานที่แอดมินมอบให้ฉัน F=ความเห็นที่ฉันเคยส่ง
+// q=คำค้นหา sc=หมวดที่เลือก onlyLow=ดูเฉพาะที่ต้องเติม dr=ตัวเลขที่พิมพ์ค้างไว้ยังไม่กดบันทึก
+let me, P = [], T = [], F = [], q = '', sc = '', onlyLow = false, pending = false, catsList = [];
+const dr = {};
+const NOCAT = 'ไม่ระบุหมวด';
+const catOf = p => String(p.category || '').trim() || NOCAT;
+const isLow = p => +p.qty <= +p.min_qty;
 (async () => {
   me = await guard(); if (!me) return;
   $('#who').textContent = me.name;
   await load();
   sb.channel('live').on('postgres_changes', { event: '*', schema: 'public' }, load).subscribe();
 })();
-// ดึงงานของฉัน + สินค้า + ความเห็นที่เคยส่ง แล้ววาดหน้า
+// กำลังพิมพ์อยู่ในช่องกรอก? ถ้าใช่จะรอวาดหน้าใหม่จนกว่าจะพิมพ์เสร็จ (กันตัวเลขที่กำลังพิมพ์หาย)
+const typing = () => { const a = document.activeElement; return !!a && /^(INPUT|TEXTAREA|SELECT)$/.test(a.tagName) && !!a.closest('#main'); };
+addEventListener('focusout', () => setTimeout(() => { if (pending && !typing()) { pending = false; draw(); } }, 80));
+// ดึงสินค้าทั้งหมด + งานของฉัน + ความเห็นที่เคยส่ง แล้ววาดหน้า (เรียกซ้ำอัตโนมัติเมื่อมีใครแก้ข้อมูล)
 async function load() {
   const [t, p, f] = await Promise.all([
     sb.from('tasks').select('*').eq('assigned_to', me.id).order('created_at', { ascending: false }),
-    sb.from('products').select('*'),
+    sb.from('products').select('*').order('name'),
     sb.from('feedback').select('*').eq('user_id', me.id).order('created_at', { ascending: false })]);
+  T = t.data || []; P = p.data || []; F = f.data || [];
+  if (typing()) { pending = true; return; }
+  draw();
+}
+// วาดทั้งหน้า: ตัวเลขที่ต้องเติม + งานที่ได้รับ + ค้นหา/หมวด + รายการสินค้า + ความเห็น
+function draw() {
   const keep = ($('#fb') || {}).value || '';
-  const F = f.data || [], P = p.data || [], T = t.data || [], todo = T.filter(x => x.status === 'todo');
-  $('#main').innerHTML = `<section class="hero ${todo.length ? 'bad' : 'ok'}"><b>${todo.length || '✓'}</b><span>${todo.length ? 'งานที่รอทำ' : 'ไม่มีงานค้าง'}</span></section>` +
-    todo.map(x => { const pr = P.find(y => y.id === x.product_id); return `<article class="card"><h3>${esc(x.title)}</h3>${x.note ? `<p class="mut">${esc(x.note)}</p>` : ''}
+  const todo = T.filter(x => x.status === 'todo'), nLow = P.filter(isLow).length;
+  catsList = [...new Set(P.map(catOf))].sort((a, b) => a === NOCAT ? 1 : b === NOCAT ? -1 : a.localeCompare(b, 'th'));
+  if (sc && !catsList.includes(sc)) sc = '';
+  const chips = catsList.length > 1 || (catsList.length === 1 && catsList[0] !== NOCAT)
+    ? `<div class="chips"><button class="chip ${sc ? '' : 'on'}" onclick="setSc(-1)">ทั้งหมด</button>${catsList.map((k, i) => `<button class="chip ${sc === k ? 'on' : ''}" onclick="setSc(${i})">${esc(k)}</button>`).join('')}</div>` : '';
+  $('#main').innerHTML =
+    `<button class="hero ${nLow ? 'bad' : 'ok'} ${onlyLow ? 'sel' : ''}" onclick="toggleLow()"><b>${nLow || '✓'}</b><span>${nLow ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}<small>${nLow ? (onlyLow ? 'แตะเพื่อดูสินค้าทั้งหมด' : 'แตะเพื่อดูเฉพาะที่ต้องเติม') : ''}</small></span></button>` +
+    todo.map(x => { const pr = P.find(y => y.id === x.product_id); return `<article class="card urg"><h3>${esc(x.title)}</h3>${x.note ? `<p class="mut">${esc(x.note)}</p>` : ''}
       ${pr ? `<label style="margin-top:10px">ยอดคงเหลือใหม่ของ ${esc(pr.name)} (${esc(pr.unit)})<input id="q${x.id}" type="number" step="any" inputmode="decimal" value="${pr.qty}"></label>` : ''}
       <button class="btn" onclick="done('${x.id}',${pr ? `'${pr.id}'` : 'null'})">เสร็จแล้ว</button></article>`; }).join('') +
+    `<div class="tools"><input id="sq" type="search" placeholder="ค้นหาสินค้า" value="${esc(q)}" oninput="q=this.value;list()"></div>${chips}<div id="pl"></div>` +
     T.filter(x => x.status === 'done').slice(0, 5).map(x => `<article class="card"><div class="row"><h3>${esc(x.title)}</h3><span class="tag grn">เสร็จแล้ว</span></div></article>`).join('') + feedbackBox(F);
+  list();
   if (keep) $('#fb').value = keep;
+}
+const setSc = i => { sc = i < 0 ? '' : catsList[i]; draw(); };
+const toggleLow = () => { onlyLow = !onlyLow; draw(); };
+// การ์ดสินค้า: ยอดในระบบ + ช่องนับ (− / พิมพ์ / +) + ปุ่มบันทึกยอด
+function card(p) {
+  const low = isLow(p), out = +p.qty <= 0, v = dr[p.id] ?? p.qty, cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
+  return `<article class="card ${out ? 'urg' : ''}"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">ในระบบ ${p.qty} ${esc(p.unit)} · ขั้นต่ำ ${p.min_qty}${cn}</p></div><span class="tag ${out ? 'red' : low ? 'amb' : 'grn'}">${out ? 'หมด' : low ? 'ต้องเติม' : 'ปกติ'}</span></div>
+  <div class="counter"><button type="button" class="step" onclick="adj('${p.id}',-1)" aria-label="ลด">−</button><input id="c${p.id}" type="number" min="0" step="any" inputmode="decimal" value="${v}" oninput="dr['${p.id}']=this.value" aria-label="จำนวนที่นับได้"><button type="button" class="step" onclick="adj('${p.id}',1)" aria-label="เพิ่ม">+</button><button class="btn" onclick="save('${p.id}')">บันทึกยอด</button></div></article>`;
+}
+// วาดเฉพาะรายการสินค้า (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา)
+function list() {
+  const s = q.trim().toLowerCase();
+  const L = P.filter(p => (!sc || catOf(p) === sc) && (!onlyLow || isLow(p)) && (!s || String(p.name || '').toLowerCase().includes(s)));
+  $('#pl').innerHTML = L.length ? L.map(card).join('') : `<p class="mut" style="text-align:center;margin:20px 0">${P.length ? 'ไม่พบสินค้า' : 'ยังไม่มีสินค้า'}</p>`;
+}
+// ปุ่ม − / + ข้างช่องนับ
+function adj(id, d) { const i = $('#c' + id); const n = Math.max(0, (+i.value || 0) + d); i.value = dr[id] = +n.toFixed(2); }
+// บันทึกยอดที่นับได้ลงตารางสินค้า (ทุกคนเห็นยอดใหม่ทันที)
+async function save(id) {
+  const i = $('#c' + id), v = i.value.trim(), p = P.find(x => x.id === id);
+  if (v === '' || isNaN(+v) || +v < 0) return toast('กรอกจำนวนให้ถูกต้อง');
+  if (p && +v === +p.qty) { delete dr[id]; return toast('ยอดเท่าเดิม'); }
+  if (!ok(await sb.from('products').update({ qty: +v }).eq('id', id))) return;
+  delete dr[id]; toast('บันทึกยอดแล้ว');
+  if (document.activeElement) document.activeElement.blur();
+  load();
 }
 // กล่องส่งความเห็นถึงแอดมิน + ประวัติที่เคยส่ง
 function feedbackBox(F) {
@@ -44,9 +92,9 @@ async function sendFb() {
   const m = $('#fb').value.trim(); if (!m) return toast('พิมพ์ความเห็นก่อนส่ง');
   if (ok(await sb.from('feedback').insert({ user_id: me.id, message: m }))) { $('#fb').value = ''; toast('ส่งให้แอดมินแล้ว'); load(); }
 }
-// กด 'เสร็จแล้ว': อัปเดตยอดสินค้า (ถ้างานผูกกับสินค้า) แล้วปิดงาน
+// กด 'เสร็จแล้ว' ที่งานที่แอดมินสั่ง: อัปเดตยอดสินค้า (ถ้างานผูกกับสินค้า) แล้วปิดงาน
 async function done(id, pid) {
-  if (pid) { const q = $('#q' + id).value; if (q === '' || !ok(await sb.from('products').update({ qty: +q }).eq('id', pid))) return; }
+  if (pid) { const v = $('#q' + id).value; if (v === '' || !ok(await sb.from('products').update({ qty: +v }).eq('id', pid))) return; }
   if (ok(await sb.from('tasks').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id))) { toast('บันทึกแล้ว'); load(); }
 }
 </script></body></html>
