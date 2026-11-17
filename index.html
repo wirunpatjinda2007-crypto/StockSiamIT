@@ -1,45 +1,599 @@
-<!doctype html><html lang="th"><head><meta charset="utf-8">
-<link rel="icon" href="logo.webp"><link rel="apple-touch-icon" href="apple-touch-icon.png">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<meta name="apple-mobile-web-app-capable" content="yes"><meta name="theme-color" content="#0f2a5f">
-<title>SiamIT – เข้าสู่ระบบ</title>
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css"></head><body>
-<!-- โครงหน้า: #pick = เลือกพนักงาน/แอดมิน, #f = ฟอร์มล็อกอิน (ซ่อนจนกว่าจะเลือก) -->
-<div class="login">
-<div id="pick"><img class="logo" src="logo.webp" alt="Siam IT Thailand"><h1>SiamIT</h1><p>เลือกประเภทผู้ใช้เพื่อเข้าสู่ระบบ</p>
-<a class="pick" href="#staff"><b>พนักงาน</b><span>ดูงานที่ได้รับและอัปเดตสต๊อก</span></a>
-<a class="pick" href="#admin"><b>แอดมิน</b><span>ดูของที่ขาดและมอบหมายงาน</span></a></div>
-<form id="f" hidden><a class="back" href="#">← เปลี่ยนประเภท</a>
-<h1 id="t"></h1><p id="p"></p>
-<label>อีเมล<input name="email" type="email" required autocomplete="username" inputmode="email"></label>
-<label>รหัสผ่าน<input name="password" type="password" required autocomplete="current-password"></label>
-<button class="btn">เข้าสู่ระบบ</button></form>
-</div>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
-<script src="config.js"></script><script src="common.js"></script>
-<script>
-// ข้อความหัวฟอร์มของแต่ละประเภทผู้ใช้ - แก้คำได้ตรงนี้
-const L = { admin: ['เข้าสู่ระบบแอดมิน', 'ดูของที่ขาดและมอบหมายงาน'], staff: ['เข้าสู่ระบบพนักงาน', 'ดูงานที่ได้รับและอัปเดตสต๊อก'] };
-// role มาจากลิงก์: #staff หรือ #admin
-let role = '';
-// สลับระหว่างหน้าเลือกประเภท กับฟอร์มล็อกอิน
-function show() {
-  role = location.hash.slice(1); if (!L[role]) role = '';
-  $('#pick').hidden = !!role; $('#f').hidden = !role;
-  if (role) { $('#t').textContent = L[role][0]; $('#p').textContent = L[role][1]; }
-}
-addEventListener('hashchange', show); show();
-// ล็อกอินแล้วไปหน้าของตัวเอง: แอดมิน -> admin.html, พนักงาน -> staff.html
-const go = p => location.replace(p.role === 'admin' ? 'admin.html' : 'staff.html');
-profile().then(p => p && go(p));
-// กดเข้าสู่ระบบ: เช็กอีเมล/รหัส แล้วเช็กว่าบัญชีตรงกับประเภทที่เลือก
-$('#f').onsubmit = async e => {
-  e.preventDefault();
-  const { error } = await sb.auth.signInWithPassword(Object.fromEntries(new FormData(e.target)));
-  if (error) return toast('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
-  const p = await profile();
-  if (p.role !== role) { await sb.auth.signOut(); return toast(role === 'admin' ? 'บัญชีนี้ไม่ใช่แอดมิน ให้เข้าทางพนักงาน' : 'บัญชีนี้เป็นแอดมิน ให้เข้าทางแอดมิน'); }
-  go(p);
-};
-</script></body></html>
+
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="theme-color" content="#0f2a5f">
+
+  <title>SiamIT Stock – เข้าสู่ระบบ</title>
+
+  <link rel="icon" href="logo.webp">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+
+  <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    :root {
+      --navy: #0f2a5f;
+      --blue: #2563eb;
+      --blue-light: #eff6ff;
+      --text: #172b4d;
+      --muted: #718096;
+      --border: #e2e8f0;
+      --white: #ffffff;
+    }
+
+    body {
+      min-height: 100vh;
+      font-family: 'IBM Plex Sans Thai', sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 10%, #dbeafe 0, transparent 35%),
+        radial-gradient(circle at 90% 90%, #e0e7ff 0, transparent 35%),
+        #f5f8ff;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 24px;
+    }
+
+    button, input {
+      font: inherit;
+    }
+
+    .login {
+      width: 100%;
+      max-width: 440px;
+      background: var(--white);
+      border: 1px solid rgba(226,232,240,.9);
+      border-radius: 24px;
+      padding: 38px;
+      box-shadow: 0 24px 70px rgba(15,42,95,.12);
+      animation: appear .35s ease;
+    }
+
+    @keyframes appear {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    [hidden] {
+      display: none !important;
+    }
+
+    .brand {
+      text-align: center;
+      margin-bottom: 30px;
+    }
+
+    .logo {
+      width: 82px;
+      height: 82px;
+      object-fit: contain;
+      margin-bottom: 12px;
+    }
+
+    .brand h1 {
+      font-family: 'Prompt', sans-serif;
+      color: var(--navy);
+      font-size: 30px;
+      font-weight: 700;
+    }
+
+    .brand p {
+      color: var(--muted);
+      font-size: 14px;
+      margin-top: 5px;
+    }
+
+    .section-title {
+      font-family: 'Prompt', sans-serif;
+      font-size: 21px;
+      color: var(--navy);
+      margin-bottom: 6px;
+    }
+
+    .section-description {
+      color: var(--muted);
+      font-size: 14px;
+      margin-bottom: 24px;
+      line-height: 1.7;
+    }
+
+    .pick {
+      display: flex;
+      align-items: center;
+      gap: 15px;
+      width: 100%;
+      padding: 18px;
+      border: 1px solid var(--border);
+      border-radius: 15px;
+      margin-bottom: 13px;
+      text-decoration: none;
+      color: var(--text);
+      transition: .2s ease;
+      background: #fff;
+    }
+
+    .pick:hover {
+      border-color: var(--blue);
+      background: var(--blue-light);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(37,99,235,.08);
+    }
+
+    .pick-icon {
+      width: 48px;
+      height: 48px;
+      flex: 0 0 48px;
+      border-radius: 13px;
+      background: var(--blue-light);
+      display: grid;
+      place-items: center;
+      color: var(--blue);
+    }
+
+    .pick-icon svg {
+      width: 25px;
+      height: 25px;
+    }
+
+    .pick-text {
+      flex: 1;
+    }
+
+    .pick b {
+      display: block;
+      font-size: 16px;
+      margin-bottom: 3px;
+    }
+
+    .pick span {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .pick-arrow {
+      color: #94a3b8;
+      font-size: 22px;
+    }
+
+    .back {
+      display: inline-block;
+      text-decoration: none;
+      color: var(--blue);
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 25px;
+    }
+
+    .back:hover {
+      text-decoration: underline;
+    }
+
+    .form-heading {
+      margin-bottom: 25px;
+    }
+
+    .form-heading h1 {
+      font-family: 'Prompt', sans-serif;
+      font-size: 23px;
+      color: var(--navy);
+      margin-bottom: 5px;
+    }
+
+    .form-heading p {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .role-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: var(--blue-light);
+      color: var(--blue);
+      border-radius: 30px;
+      padding: 6px 12px;
+      font-size: 12px;
+      font-weight: 600;
+      margin-bottom: 17px;
+    }
+
+    .field {
+      margin-bottom: 19px;
+    }
+
+    .field label {
+      display: block;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .field input {
+      width: 100%;
+      height: 49px;
+      border: 1px solid var(--border);
+      border-radius: 11px;
+      padding: 0 14px;
+      outline: none;
+      color: var(--text);
+      background: #fff;
+      transition: .2s;
+    }
+
+    .field input:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(37,99,235,.10);
+    }
+
+    .field input::placeholder {
+      color: #a0aec0;
+    }
+
+    .btn {
+      width: 100%;
+      height: 50px;
+      border: 0;
+      border-radius: 11px;
+      background: var(--navy);
+      color: #fff;
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      transition: .2s;
+      margin-top: 5px;
+    }
+
+    .btn:hover {
+      background: #17418c;
+      transform: translateY(-1px);
+      box-shadow: 0 7px 18px rgba(15,42,95,.2);
+    }
+
+    .btn:disabled {
+      opacity: .6;
+      cursor: wait;
+      transform: none;
+    }
+
+    .footer {
+      text-align: center;
+      margin-top: 25px;
+      padding-top: 18px;
+      border-top: 1px solid #f1f5f9;
+      color: #94a3b8;
+      font-size: 12px;
+    }
+
+    .toast {
+      position: fixed;
+      left: 50%;
+      bottom: 25px;
+      transform: translateX(-50%) translateY(20px);
+      background: #172b4d;
+      color: white;
+      padding: 13px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      opacity: 0;
+      visibility: hidden;
+      transition: .25s;
+      z-index: 100;
+      width: max-content;
+      max-width: calc(100% - 32px);
+      text-align: center;
+      box-shadow: 0 8px 25px rgba(0,0,0,.15);
+    }
+
+    .toast.show {
+      opacity: 1;
+      visibility: visible;
+      transform: translateX(-50%) translateY(0);
+    }
+
+    @media (max-width: 480px) {
+      body {
+        padding: 15px;
+      }
+
+      .login {
+        padding: 27px 22px;
+        border-radius: 19px;
+      }
+
+      .brand h1 {
+        font-size: 26px;
+      }
+
+      .section-title {
+        font-size: 19px;
+      }
+    }
+  </style>
+</head>
+
+<body>
+
+  <main class="login">
+
+    <!-- โลโก้และชื่อระบบ -->
+    <div class="brand">
+      <img class="logo" src="logo.webp" alt="Siam IT Thailand">
+      <h1>SiamIT Stock</h1>
+      <p>ระบบจัดการและตรวจสอบคลังสินค้า</p>
+    </div>
+
+    <!-- หน้าเลือกประเภทผู้ใช้ -->
+    <div id="pick">
+
+      <h2 class="section-title">ยินดีต้อนรับ</h2>
+      <p class="section-description">
+        เลือกประเภทบัญชีของคุณเพื่อเข้าสู่ระบบ
+      </p>
+
+      <a class="pick" href="#staff">
+
+        <div class="pick-icon">
+          <svg viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="8" r="4"/>
+            <path d="M5 21v-2a7 7 0 0 1 14 0v2"/>
+          </svg>
+        </div>
+
+        <div class="pick-text">
+          <b>พนักงาน</b>
+          <span>ดูงานที่ได้รับและอัปเดตสต๊อก</span>
+        </div>
+
+        <div class="pick-arrow">›</div>
+      </a>
+
+      <a class="pick" href="#admin">
+
+        <div class="pick-icon">
+          <svg viewBox="0 0 24 24" fill="none"
+            stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2 20 6v6c0 5-3.5 8-8 10-4.5-2-8-5-8-10V6z"/>
+            <path d="m9 12 2 2 4-4"/>
+          </svg>
+        </div>
+
+        <div class="pick-text">
+          <b>แอดมิน</b>
+          <span>ดูของที่ขาดและมอบหมายงาน</span>
+        </div>
+
+        <div class="pick-arrow">›</div>
+      </a>
+
+    </div>
+
+    <!-- ฟอร์มเข้าสู่ระบบ -->
+    <form id="f" hidden>
+
+      <a class="back" href="#">
+        ← เปลี่ยนประเภทผู้ใช้
+      </a>
+
+      <div class="form-heading">
+        <div class="role-label" id="roleLabel">
+          เข้าสู่ระบบ
+        </div>
+
+        <h1 id="t"></h1>
+        <p id="p"></p>
+      </div>
+
+      <div class="field">
+        <label for="email">อีเมล</label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          required
+          autocomplete="username"
+          inputmode="email"
+          placeholder="กรอกอีเมลของคุณ"
+        >
+      </div>
+
+      <div class="field">
+        <label for="password">รหัสผ่าน</label>
+        <input
+          id="password"
+          name="password"
+          type="password"
+          required
+          autocomplete="current-password"
+          placeholder="กรอกรหัสผ่าน"
+        >
+      </div>
+
+      <button class="btn" id="loginBtn" type="submit">
+        เข้าสู่ระบบ
+      </button>
+
+    </form>
+
+    <div class="footer">
+      Siam IT Thailand · Stock Management System
+    </div>
+
+  </main>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- Supabase -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+
+  <!-- ไฟล์ตั้งค่าและฟังก์ชันกลางเดิม -->
+  <script src="config.js"></script>
+  <script src="common.js"></script>
+
+  <script>
+    // ================================================
+    // ตั้งค่าประเภทบัญชี
+    // ================================================
+
+    const L = {
+      admin: [
+        'เข้าสู่ระบบแอดมิน',
+        'ดูของที่ขาดและมอบหมายงาน'
+      ],
+
+      staff: [
+        'เข้าสู่ระบบพนักงาน',
+        'ดูงานที่ได้รับและอัปเดตสต๊อก'
+      ]
+    };
+
+    let role = '';
+
+    // ================================================
+    // แสดงข้อความแจ้งเตือน
+    // ================================================
+
+    function loginToast(message) {
+      const toastElement = document.getElementById('toast');
+
+      toastElement.textContent = message;
+      toastElement.classList.add('show');
+
+      clearTimeout(loginToast.timer);
+
+      loginToast.timer = setTimeout(() => {
+        toastElement.classList.remove('show');
+      }, 3000);
+    }
+
+    // ================================================
+    // สลับหน้าประเภทผู้ใช้
+    // ================================================
+
+    function show() {
+      role = location.hash.slice(1);
+
+      if (!L[role]) {
+        role = '';
+      }
+
+      document.getElementById('pick').hidden = !!role;
+      document.getElementById('f').hidden = !role;
+
+      if (role) {
+        document.getElementById('t').textContent = L[role][0];
+        document.getElementById('p').textContent = L[role][1];
+
+        document.getElementById('roleLabel').textContent =
+          role === 'admin' ? '🔐 ADMIN' : '👤 STAFF';
+      }
+    }
+
+    addEventListener('hashchange', show);
+    show();
+
+    // ================================================
+    // ตรวจสอบ Session เดิม
+    // ================================================
+
+    const go = p => {
+      location.replace(
+        p.role === 'admin' ? 'admin.html' : 'staff.html'
+      );
+    };
+
+    profile()
+      .then(p => {
+        if (p) go(p);
+      })
+      .catch(error => {
+        console.error('ตรวจสอบ Session ไม่สำเร็จ:', error);
+      });
+
+    // ================================================
+    // เข้าสู่ระบบ
+    // ================================================
+
+    document.getElementById('f').onsubmit = async e => {
+      e.preventDefault();
+
+      const form = e.target;
+      const button = document.getElementById('loginBtn');
+
+      if (!role || !L[role]) {
+        loginToast('กรุณาเลือกประเภทผู้ใช้');
+        return;
+      }
+
+      button.disabled = true;
+      button.textContent = 'กำลังเข้าสู่ระบบ...';
+
+      try {
+        const formData = new FormData(form);
+
+        const credentials = {
+          email: formData.get('email'),
+          password: formData.get('password')
+        };
+
+        const { error } = await sb.auth.signInWithPassword(credentials);
+
+        if (error) {
+          loginToast('อีเมลหรือรหัสผ่านไม่ถูกต้อง');
+          return;
+        }
+
+        const p = await profile();
+
+        if (!p) {
+          await sb.auth.signOut();
+          loginToast('ไม่พบข้อมูลผู้ใช้งาน กรุณาติดต่อแอดมิน');
+          return;
+        }
+
+        if (p.role !== role) {
+          await sb.auth.signOut();
+
+          loginToast(
+            role === 'admin'
+              ? 'บัญชีนี้ไม่ใช่แอดมิน กรุณาเลือกพนักงาน'
+              : 'บัญชีนี้เป็นแอดมิน กรุณาเลือกแอดมิน'
+          );
+
+          return;
+        }
+
+        go(p);
+
+      } catch (error) {
+        console.error(error);
+        loginToast('เกิดข้อผิดพลาด กรุณาลองใหม่อีกครั้ง');
+
+      } finally {
+        button.disabled = false;
+        button.textContent = 'เข้าสู่ระบบ';
+      }
+    };
+  </script>
+
+</body>
+</html>
