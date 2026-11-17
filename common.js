@@ -24,3 +24,19 @@ async function guard(role) {
 }
 // ออกจากระบบ
 async function logout() { await sb.auth.signOut(); location.href = 'index.html'; }
+
+// ===== หน่วย + วิธีนับสินค้า =====
+// หน่วยที่เลือกได้ในฟอร์มสินค้า (อยากเพิ่มหน่วย ให้เพิ่มชื่อในลิสต์นี้ / "อื่นๆ" ให้พิมพ์เองอยู่แล้ว)
+const UNITS = ['ขวด', 'ชิ้น', 'อัน', 'ถุง', 'แพ็ค'];
+// ป้ายสถานะสำหรับสินค้าที่นับแบบสถานะ
+const STL = { ok: 'มีพอ', low: 'ใกล้หมด', out: 'หมด' };
+// สินค้านี้นับแบบสถานะหรือไม่ (track_mode = 'status')
+const isSt = p => p.track_mode === 'status';
+// ระดับสถานะรวมของสินค้า: ok / low / crit / out (ใช้ร่วมกันทั้งหน้าแอดมินและพนักงาน)
+const stOf = p => {
+  if (isSt(p)) return p.status === 'out' ? 'out' : p.status === 'low' ? 'low' : 'ok';
+  const q = +p.qty, m = +p.min_qty;
+  if (q > m) return 'ok';
+  if (q <= 0) return 'out';
+  return m > 0 && q / m <= 0.25 ? 'crit' : 'low';
+};
