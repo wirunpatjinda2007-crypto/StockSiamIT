@@ -18,7 +18,8 @@ let me, P = [], T = [], F = [], q = '', sc = '', onlyLow = false, pending = fals
 const dr = {};
 const NOCAT = 'ไม่ระบุหมวด';
 const catOf = p => String(p.category || '').trim() || NOCAT;
-const isLow = p => +p.qty <= +p.min_qty;
+// ต้องเติมหรือไม่ (รองรับทั้งสินค้านับจำนวนและนับสถานะ - stOf อยู่ใน common.js)
+const isLow = p => stOf(p) !== 'ok';
 (async () => {
   me = await guard(); if (!me) return;
   $('#who').textContent = me.name;
@@ -49,7 +50,9 @@ function draw() {
   $('#main').innerHTML =
     `<button class="hero ${nLow ? 'bad' : 'ok'} ${onlyLow ? 'sel' : ''}" onclick="toggleLow()"><b>${nLow || '✓'}</b><span>${nLow ? 'รายการที่ต้องเติม' : 'สต๊อกครบทุกรายการ'}<small>${nLow ? (onlyLow ? 'แตะเพื่อดูสินค้าทั้งหมด' : 'แตะเพื่อดูเฉพาะที่ต้องเติม') : ''}</small></span></button>` +
     todo.map(x => { const pr = P.find(y => y.id === x.product_id); return `<article class="card urg"><h3>${esc(x.title)}</h3>${x.note ? `<p class="mut">${esc(x.note)}</p>` : ''}
-      ${pr ? `<label style="margin-top:10px">ยอดคงเหลือใหม่ของ ${esc(pr.name)} (${esc(pr.unit)})<input id="q${x.id}" type="number" step="any" inputmode="decimal" value="${pr.qty}"></label>` : ''}
+      ${pr ? (isSt(pr)
+        ? `<label style="margin-top:10px">สถานะใหม่ของ ${esc(pr.name)}<select id="q${x.id}">${['ok', 'low', 'out'].map(s => `<option value="${s}" ${(pr.status || 'ok') === s ? 'selected' : ''}>${STL[s]}</option>`).join('')}</select></label>`
+        : `<label style="margin-top:10px">ยอดคงเหลือใหม่ของ ${esc(pr.name)} (${esc(pr.unit)})<input id="q${x.id}" type="number" step="any" inputmode="decimal" value="${pr.qty}"></label>`) : ''}
       <button class="btn" onclick="done('${x.id}',${pr ? `'${pr.id}'` : 'null'})">เสร็จแล้ว</button></article>`; }).join('') +
     `<div class="tools"><input id="sq" type="search" placeholder="ค้นหาสินค้า" value="${esc(q)}" oninput="q=this.value;list()"></div>${chips}<div id="pl"></div>` +
     T.filter(x => x.status === 'done').slice(0, 5).map(x => `<article class="card"><div class="row"><h3>${esc(x.title)}</h3><span class="tag grn">เสร็จแล้ว</span></div></article>`).join('') + feedbackBox(F);
@@ -58,11 +61,22 @@ function draw() {
 }
 const setSc = i => { sc = i < 0 ? '' : catsList[i]; draw(); };
 const toggleLow = () => { onlyLow = !onlyLow; draw(); };
-// การ์ดสินค้า: ยอดในระบบ + ช่องนับ (− / พิมพ์ / +) + ปุ่มบันทึกยอด
+// การ์ดสินค้า
+// - นับจำนวน: ยอดในระบบ + ช่องนับ (− / พิมพ์ / +) + ปุ่มบันทึกยอด
+// - นับสถานะ: ปุ่มเลือก มีพอ / ใกล้หมด / หมด (แตะแล้วบันทึกทันที)
 function card(p) {
-  const low = isLow(p), out = +p.qty <= 0, v = dr[p.id] ?? p.qty, cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
-  return `<article class="card ${out ? 'urg' : ''}"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">ในระบบ ${p.qty} ${esc(p.unit)} · ขั้นต่ำ ${p.min_qty}${cn}</p></div><span class="tag ${out ? 'red' : low ? 'amb' : 'grn'}">${out ? 'หมด' : low ? 'ต้องเติม' : 'ปกติ'}</span></div>
+  const k = stOf(p), low = k !== 'ok', out = k === 'out', cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
+  const head = `<div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${isSt(p) ? 'สถานะในระบบ: ' + STL[p.status || 'ok'] : `ในระบบ ${p.qty} ${esc(p.unit)} · ขั้นต่ำ ${p.min_qty}`}${cn}</p></div><span class="tag ${out ? 'red' : low ? 'amb' : 'grn'}">${out ? 'หมด' : low ? 'ต้องเติม' : 'ปกติ'}</span></div>`;
+  if (isSt(p)) return `<article class="card ${out ? 'urg' : ''}">${head}<div class="segs">${['ok', 'low', 'out'].map(s => `<button type="button" class="seg g-${s} ${(p.status || 'ok') === s ? 'on' : ''}" onclick="setStatus('${p.id}','${s}')">${STL[s]}</button>`).join('')}</div></article>`;
+  const v = dr[p.id] ?? p.qty;
+  return `<article class="card ${out ? 'urg' : ''}">${head}
   <div class="counter"><button type="button" class="step" onclick="adj('${p.id}',-1)" aria-label="ลด">−</button><input id="c${p.id}" type="number" min="0" step="any" inputmode="decimal" value="${v}" oninput="dr['${p.id}']=this.value" aria-label="จำนวนที่นับได้"><button type="button" class="step" onclick="adj('${p.id}',1)" aria-label="เพิ่ม">+</button><button class="btn" onclick="save('${p.id}')">บันทึกยอด</button></div></article>`;
+}
+// สินค้านับแบบสถานะ: แตะปุ่มสถานะแล้วบันทึกทันที
+async function setStatus(id, s) {
+  const p = P.find(x => x.id === id); if (p && (p.status || 'ok') === s) return;
+  if (!ok(await sb.from('products').update({ status: s }).eq('id', id))) return;
+  toast('บันทึกสถานะแล้ว'); load();
 }
 // วาดเฉพาะรายการสินค้า (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา)
 function list() {
@@ -92,9 +106,14 @@ async function sendFb() {
   const m = $('#fb').value.trim(); if (!m) return toast('พิมพ์ความเห็นก่อนส่ง');
   if (ok(await sb.from('feedback').insert({ user_id: me.id, message: m }))) { $('#fb').value = ''; toast('ส่งให้แอดมินแล้ว'); load(); }
 }
-// กด 'เสร็จแล้ว' ที่งานที่แอดมินสั่ง: อัปเดตยอดสินค้า (ถ้างานผูกกับสินค้า) แล้วปิดงาน
+// กด 'เสร็จแล้ว' ที่งานที่แอดมินสั่ง: อัปเดตยอด/สถานะสินค้า (ถ้างานผูกกับสินค้า) แล้วปิดงาน
 async function done(id, pid) {
-  if (pid) { const v = $('#q' + id).value; if (v === '' || !ok(await sb.from('products').update({ qty: +v }).eq('id', pid))) return; }
+  if (pid) {
+    const pr = P.find(x => x.id === pid), v = $('#q' + id).value;
+    if (v === '') return;
+    const upd = pr && isSt(pr) ? { status: v } : { qty: +v };
+    if (!ok(await sb.from('products').update(upd).eq('id', pid))) return;
+  }
   if (ok(await sb.from('tasks').update({ status: 'done', done_at: new Date().toISOString() }).eq('id', id))) { toast('บันทึกแล้ว'); load(); }
 }
 </script></body></html>
