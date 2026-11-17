@@ -44,8 +44,6 @@ const NOCAT = 'ไม่ระบุหมวด';
 const catOf = p => String(p.category || '').trim() || NOCAT;
 // ข้อความบรรทัดรองของสินค้า: นับจำนวน = เหลือ x จากขั้นต่ำ y / นับสถานะ = สถานะ: ...
 const sub = p => isSt(p) ? 'สถานะ: ' + STL[p.status || 'ok'] : `เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}`;
-// ตัวเลข % ของสต๊อกเทียบกับขั้นต่ำ มีสีตามระดับ (สินค้านับสถานะไม่แสดง %)
-const pcTxt = p => (isSt(p) || +p.min_qty <= 0) ? '' : `<b class="pc v-${st(p)}">${Math.round(+p.qty / +p.min_qty * 100)}%</b>`;
 // view = มุมมองรายการ (low=ต้องเติม, all=ทั้งหมด, ok=ปกติ), fl = ระดับที่กรอง, cat = หมวดที่กรอง ('' = ทุกหมวด)
 // catList = รายชื่อหมวดที่แสดงอยู่ (ใช้อ้างด้วยเลขลำดับ)
 let view = 'low', fl = '', cat = '', catList = [];
@@ -128,9 +126,9 @@ function renderShort() {
     lf.map(p => {
       const cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
       if (!isLow(p)) { const w = isSt(p) ? 100 : (+p.min_qty > 0 ? Math.min(100, Math.round(+p.qty / +p.min_qty * 100)) : 100);
-        return `<article class="card tap okc lv-ok" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag grn">ปกติ</span>${pcTxt(p)}</div></div><div class="bar"><i style="width:${w}%"></i></div></article>`; }
+        return `<article class="card tap okc lv-ok" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag grn">ปกติ</span></div></div><div class="bar"><i style="width:${w}%"></i></div></article>`; }
       const k = st(p), r = pct(p), open = T.some(t => t.product_id === p.id && t.status === 'todo');
-      return `<article class="card tap lv-${k}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LV[k]}</span>${pcTxt(p)}</div></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
+      return `<article class="card tap lv-${k}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LV[k]}</span></div></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
         (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="event.stopPropagation();openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
     }).join('');
 }
@@ -142,7 +140,7 @@ async function seenFb(id) { if (ok(await sb.from('feedback').update({ status: 'd
 async function delFb(id) { if (confirm('ลบความเห็นนี้?') && ok(await sb.from('feedback').delete().eq('id', id))) load(); }
 function renderProd() {
   $('#main').innerHTML = `<button class="btn add" onclick="openProd()">เพิ่มสินค้า</button>` +
-    (P.length ? P.map(p => { const bad = st(p) !== 'ok'; return `<article class="card" onclick="openProd('${p.id}')"><div class="row"><h3>${esc(p.name)}</h3><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : p.qty + ' ' + esc(p.unit)}</span>${pcTxt(p)}</div></div><p class="mut">${isSt(p) ? 'นับตามสถานะ' : 'ขั้นต่ำ ' + p.min_qty}</p></article>`; }).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
+    (P.length ? P.map(p => { const bad = st(p) !== 'ok'; return `<article class="card" onclick="openProd('${p.id}')"><div class="row"><h3>${esc(p.name)}</h3><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : p.qty + ' ' + esc(p.unit)}</span></div></div><p class="mut">${isSt(p) ? 'นับตามสถานะ' : 'ขั้นต่ำ ' + p.min_qty}</p></article>`; }).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
 }
 function renderTask() {
   $('#main').innerHTML = `<button class="btn add" onclick="openTask()">สั่งงานใหม่</button>` +
