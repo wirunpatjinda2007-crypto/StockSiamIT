@@ -18,9 +18,10 @@ async function load() {
 // สลับแท็บ
 function go(t) { tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); render(); }
 // สัดส่วนที่เหลือเทียบกับขั้นต่ำ (0 = หมด, 1 = ถึงขั้นต่ำ) ใช้จัดลำดับความเร่งด่วน
-const pct = p => +p.min_qty > 0 ? +p.qty / +p.min_qty : 0;
-// รายการที่ต้องเติม = qty <= min_qty เรียงจากเหลือน้อยที่สุดขึ้นก่อน
-const low = () => P.filter(p => +p.qty <= +p.min_qty).sort((x, y) => pct(x) - pct(y) || x.qty - y.qty);
+// สินค้านับแบบสถานะ: หมด=0, ใกล้หมด=0.5, มีพอ=1
+const pct = p => isSt(p) ? ({ out: 0, low: 0.5, ok: 1 }[p.status] ?? 1) : (+p.min_qty > 0 ? +p.qty / +p.min_qty : 0);
+// รายการที่ต้องเติม = สถานะไม่ใช่ ok เรียงจากเหลือน้อยที่สุดขึ้นก่อน
+const low = () => P.filter(p => stOf(p) !== 'ok').sort((x, y) => pct(x) - pct(y) || x.qty - y.qty);
 // แปลง id ผู้ใช้เป็นชื่อ (อ่านจากคอลัมน์ name ในตาราง profiles)
 // ชื่อพนักงาน/แอดมินที่แสดงในแอปมาจากตรงนี้ - แก้ชื่อได้ที่ Supabase (ดูท้ายไฟล์ schema.sql)
 const who = id => (S.find(x => x.id === id) || {}).name || '-';
@@ -30,10 +31,10 @@ function render() {
   const u = F.filter(x => x.status === 'todo').length; $('#fbn').hidden = !u; $('#fbn').textContent = u;
   ({ short: renderShort, prod: renderProd, task: renderTask, fb: renderFb })[tab]();
 }
-// ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด
-const lvl = p => +p.qty <= 0 ? 'out' : pct(p) <= 0.25 ? 'crit' : 'low';
-// สถานะรวม: ถ้าเหลือเกินขั้นต่ำ = ok (ปกติ) ไม่งั้นใช้ระดับความขาดด้านบน
-const st = p => +p.qty <= +p.min_qty ? lvl(p) : 'ok';
+// ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด (คำนวณใน stOf ที่ common.js)
+const lvl = p => stOf(p);
+// สถานะรวม: ok (ปกติ) / low / crit / out
+const st = p => stOf(p);
 const LV = { out: 'หมด', crit: 'เหลือน้อยมาก', low: 'ใกล้หมด', ok: 'ปกติ' };
 const VIEWS = { low: 'ต้องเติม', all: 'สินค้าทั้งหมด', ok: 'ปกติ' };
 // ตัวเลือกหมวดหมู่ในฟอร์มเพิ่ม/แก้สินค้า - อยากเพิ่มหมวดใหม่ ให้เพิ่มชื่อในลิสต์นี้
@@ -41,6 +42,8 @@ const VIEWS = { low: 'ต้องเติม', all: 'สินค้าทั�
 const CATS = ['ขนม', 'ของใช้', 'ของจิปาถะ'];
 const NOCAT = 'ไม่ระบุหมวด';
 const catOf = p => String(p.category || '').trim() || NOCAT;
+// ข้อความบรรทัดรองของสินค้า: นับจำนวน = เหลือ x จากขั้นต่ำ y / นับสถานะ = สถานะ: ...
+const sub = p => isSt(p) ? 'สถานะ: ' + STL[p.status || 'ok'] : `เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}`;
 // view = มุมมองรายการ (low=ต้องเติม, all=ทั้งหมด, ok=ปกติ), fl = ระดับที่กรอง, cat = หมวดที่กรอง ('' = ทุกหมวด)
 // catList = รายชื่อหมวดที่แสดงอยู่ (ใช้อ้างด้วยเลขลำดับ)
 let view = 'low', fl = '', cat = '', catList = [];
@@ -77,7 +80,7 @@ function dash() {
   const stats = `<div class="stats">${stat('blue', 'all', IC.box, total, 'สินค้าทั้งหมด')}${stat('grn', 'ok', IC.ok, c.ok, 'ปกติ')}${stat(n ? 'red' : 'grn', 'low', n ? IC.warn : IC.ok, n, 'ต้องเติม')}</div>`;
   const leg = ['ok', 'low', 'crit', 'out'].map(k => `<button class="dl l-${k} ${(k === 'ok' ? view === 'ok' : view === 'low' && fl === k) ? 'on' : ''}" onclick="${k === 'ok' ? "setView('ok')" : "setFl('" + k + "')"}">${LV[k]}<b>${c[k]}</b></button>`).join('');
   const donutCard = `<section class="card chart"><h3>สถานะสต๊อก${cat ? ' · ' + esc(cat) : ''}</h3><div class="dwrap">${donut(c, total)}<div class="dleg">${leg}</div></div><p class="mut hint">แตะส่วนของโดนัทหรือรายการด้านข้างเพื่อกรองรายการด้านล่าง</p></section>`;
-  const cs = {}; P.forEach(p => { const k = catOf(p); const o = cs[k] || (cs[k] = { n: 0, ok: 0 }); o.n++; if (+p.qty > +p.min_qty) o.ok++; });
+  const cs = {}; P.forEach(p => { const k = catOf(p); const o = cs[k] || (cs[k] = { n: 0, ok: 0 }); o.n++; if (st(p) === 'ok') o.ok++; });
   catList = Object.keys(cs).sort((a, b) => (cs[b].n - cs[b].ok) - (cs[a].n - cs[a].ok) || a.localeCompare(b, 'th'));
   const showCat = !(catList.length === 1 && catList[0] === NOCAT);
   const catCard = showCat ? `<section class="card chart"><h3>สรุปตามหมวดหมู่</h3>${catList.map((k, i) => { const o = cs[k], bad = o.n - o.ok, pc = Math.round(o.ok / o.n * 100);
@@ -87,13 +90,20 @@ function dash() {
 // หน้าต่างรายละเอียดสินค้า (เด้งขึ้นเมื่อกดการ์ดสินค้า)
 function detail(id) {
   const p = P.find(x => x.id === id); if (!p) return;
-  const k = st(p), mn = +p.min_qty, r = mn > 0 ? Math.round(+p.qty / mn * 100) : (+p.qty > 0 ? 100 : 0), open = T.some(t => t.product_id === id && t.status === 'todo');
-  const need = +(mn - +p.qty).toFixed(2);
+  const S_ = isSt(p), k = st(p), mn = +p.min_qty;
+  const r = S_ ? Math.round(pct(p) * 100) : (mn > 0 ? Math.round(+p.qty / mn * 100) : (+p.qty > 0 ? 100 : 0));
+  const open = T.some(t => t.product_id === id && t.status === 'todo');
+  const need = S_ ? 0 : +(mn - +p.qty).toFixed(2);
   const d = $('#sheet');
+  const boxes = S_
+    ? `<div><span class="mut">สถานะ</span><b class="v-${k}">${STL[p.status || 'ok']}</b></div><div><span class="mut">วิธีนับ</span><b>ตามสถานะ</b></div>`
+    : `<div><span class="mut">คงเหลือ</span><b class="v-${k}">${p.qty} ${esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div>`;
+  const msg = S_ ? (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'มีพอ' : 'ใกล้หมด')
+    : (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'ปกติ · ' + r + '% ของขั้นต่ำ' : 'เหลือ ' + r + '% ของขั้นต่ำ');
   d.innerHTML = `<h2>${esc(p.name)}</h2>
-  <div class="two dstat"><div><span class="mut">คงเหลือ</span><b class="v-${k}">${p.qty} ${esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div></div>
+  <div class="two dstat">${boxes}</div>
   <div class="ctrack big"><i class="s-${k}" style="width:${Math.max(0, Math.min(100, r))}%"></i></div>
-  <p class="mut" style="margin:8px 0 4px">${k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'ปกติ · ' + r + '% ของขั้นต่ำ' : 'เหลือ ' + r + '% ของขั้นต่ำ'}${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}${catOf(p) !== NOCAT ? ' · หมวด ' + esc(catOf(p)) : ''}</p>
+  <p class="mut" style="margin:8px 0 4px">${msg}${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}${catOf(p) !== NOCAT ? ' · หมวด ' + esc(catOf(p)) : ''}</p>
   ${open ? '<p class="mut">มีงานเติมของที่ยังไม่เสร็จ</p>' : ''}
   <div class="acts" style="margin-top:14px"><button type="button" class="btn ghost" onclick="$('#sheet').close()">ปิด</button>
   ${k === 'ok' || open ? `<button type="button" class="btn" onclick="$('#sheet').close();openProd('${id}')">แก้ไขสินค้า</button>` : `<button type="button" class="btn" onclick="$('#sheet').close();openTask('${id}')">สั่งงานเติมของ</button>`}</div>`;
@@ -103,8 +113,8 @@ function detail(id) {
 function renderShort() {
   if (cat && !P.some(p => catOf(p) === cat)) cat = '';
   const sc = cat ? P.filter(p => catOf(p) === cat) : P;
-  if (fl && !sc.some(p => +p.qty <= +p.min_qty && lvl(p) === fl)) fl = '';
-  const isLow = p => +p.qty <= +p.min_qty;
+  if (fl && !sc.some(p => st(p) !== 'ok' && lvl(p) === fl)) fl = '';
+  const isLow = p => st(p) !== 'ok';
   const inView = p => view === 'all' || (view === 'ok' ? !isLow(p) : isLow(p));
   const rank = p => isLow(p) ? pct(p) : 99;
   const lf = sc.filter(p => inView(p) && (!fl || lvl(p) === fl)).sort((a, b) => rank(a) - rank(b) || (rank(a) < 99 ? a.qty - b.qty : 0));
@@ -115,10 +125,10 @@ function renderShort() {
   $('#main').innerHTML = dash() + '<div id="lst"></div>' + head + empty +
     lf.map(p => {
       const cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
-      if (!isLow(p)) { const w = +p.min_qty > 0 ? Math.min(100, Math.round(+p.qty / +p.min_qty * 100)) : 100;
-        return `<article class="card tap okc" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}${cn}</p></div><span class="tag grn">ปกติ</span></div><div class="bar"><i style="width:${w}%"></i></div></article>`; }
-      const out = +p.qty <= 0, r = pct(p), urg = out || r <= 0.25, open = T.some(t => t.product_id === p.id && t.status === 'todo');
-      return `<article class="card tap ${urg ? 'urg' : ''}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}${cn}</p></div><span class="tag ${urg ? 'red' : 'amb'}">${out ? 'หมด' : urg ? 'เหลือน้อยมาก' : 'ใกล้หมด'}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
+      if (!isLow(p)) { const w = isSt(p) ? 100 : (+p.min_qty > 0 ? Math.min(100, Math.round(+p.qty / +p.min_qty * 100)) : 100);
+        return `<article class="card tap okc" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><span class="tag grn">ปกติ</span></div><div class="bar"><i style="width:${w}%"></i></div></article>`; }
+      const out = st(p) === 'out', r = pct(p), urg = out || r <= 0.25, open = T.some(t => t.product_id === p.id && t.status === 'todo');
+      return `<article class="card tap ${urg ? 'urg' : ''}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><span class="tag ${urg ? 'red' : 'amb'}">${out ? 'หมด' : urg ? 'เหลือน้อยมาก' : 'ใกล้หมด'}</span></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
         (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="event.stopPropagation();openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
     }).join('');
 }
@@ -130,7 +140,7 @@ async function seenFb(id) { if (ok(await sb.from('feedback').update({ status: 'd
 async function delFb(id) { if (confirm('ลบความเห็นนี้?') && ok(await sb.from('feedback').delete().eq('id', id))) load(); }
 function renderProd() {
   $('#main').innerHTML = `<button class="btn add" onclick="openProd()">เพิ่มสินค้า</button>` +
-    (P.length ? P.map(p => { const bad = +p.qty <= +p.min_qty; return `<article class="card" onclick="openProd('${p.id}')"><div class="row"><h3>${esc(p.name)}</h3><span class="tag ${bad ? 'red' : 'grn'}">${p.qty} ${esc(p.unit)}</span></div><p class="mut">ขั้นต่ำ ${p.min_qty}</p></article>`; }).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
+    (P.length ? P.map(p => { const bad = st(p) !== 'ok'; return `<article class="card" onclick="openProd('${p.id}')"><div class="row"><h3>${esc(p.name)}</h3><span class="tag ${bad ? 'red' : 'grn'}">${isSt(p) ? STL[p.status || 'ok'] : p.qty + ' ' + esc(p.unit)}</span></div><p class="mut">${isSt(p) ? 'นับตามสถานะ' : 'ขั้นต่ำ ' + p.min_qty}</p></article>`; }).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
 }
 function renderTask() {
   $('#main').innerHTML = `<button class="btn add" onclick="openTask()">สั่งงานใหม่</button>` +
@@ -143,17 +153,32 @@ function sheet(h, fn) {
   $('#f').onsubmit = async e => { e.preventDefault(); if (await fn(Object.fromEntries(new FormData(e.target)))) { d.close(); toast('บันทึกแล้ว'); load(); } };
   d.showModal();
 }
-// ฟอร์มเพิ่ม/แก้สินค้า (ชื่อ, คงเหลือ, ขั้นต่ำ, หน่วย) - อยากเพิ่มช่อง เช่น หมวดหมู่ ให้เพิ่ม <label> ตรงนี้ และเพิ่มคอลัมน์ในตาราง products
+// สลับช่องกรอกตามวิธีนับ: จำนวน (คงเหลือ+ขั้นต่ำ) หรือ สถานะ
+const modeUi = m => { $('#mq').hidden = m === 'status'; $('#ms').hidden = m !== 'status'; };
+// ฟอร์มเพิ่ม/แก้สินค้า (ชื่อ, วิธีนับ, คงเหลือ+ขั้นต่ำ หรือ สถานะ, หน่วย, หมวดหมู่)
+// หน่วยที่เลือกได้แก้ที่ UNITS ใน common.js
 function openProd(id) {
-  const p = P.find(x => x.id === id) || { name: '', unit: 'ชิ้น', qty: 0, min_qty: 0 };
+  const p = P.find(x => x.id === id) || { name: '', unit: 'ชิ้น', qty: 0, min_qty: 0, track_mode: 'qty', status: 'ok' };
+  const S_ = isSt(p), other = !!p.unit && !UNITS.includes(p.unit);
   sheet(`<h2>${id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h2>
   <label>ชื่อสินค้า<input name="name" required value="${esc(p.name)}"></label>
-  <div class="two"><label>คงเหลือ<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
-  <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div>
-  <label>หน่วย<input name="unit" value="${esc(p.unit)}"></label>
+  <label>วิธีนับสินค้า<select name="track_mode" onchange="modeUi(this.value)">
+    <option value="qty" ${S_ ? '' : 'selected'}>นับเป็นจำนวน (เทียบกับขั้นต่ำ)</option>
+    <option value="status" ${S_ ? 'selected' : ''}>นับเป็นสถานะ (มีพอ / ใกล้หมด / หมด)</option></select></label>
+  <div id="mq" ${S_ ? 'hidden' : ''}><div class="two"><label>คงเหลือ<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
+  <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div></div>
+  <label id="ms" ${S_ ? '' : 'hidden'}>สถานะปัจจุบัน<select name="status">${['ok', 'low', 'out'].map(s => `<option value="${s}" ${(p.status || 'ok') === s ? 'selected' : ''}>${STL[s]}</option>`).join('')}</select></label>
+  <label>หน่วย<select name="unit" onchange="$('#uo').hidden=this.value!=='__other'">${UNITS.map(u => `<option ${p.unit === u ? 'selected' : ''}>${u}</option>`).join('')}<option value="__other" ${other ? 'selected' : ''}>อื่นๆ</option></select></label>
+  <label id="uo" ${other ? '' : 'hidden'}>ระบุหน่วย<input name="unit_other" value="${other ? esc(p.unit) : ''}" placeholder="เช่น กล่อง, ลัง"></label>
   <label>หมวดหมู่<select name="category"><option value="">ไม่ระบุ</option>${[...new Set([...CATS, ...P.map(catOf).filter(k => k !== NOCAT)])].map(k => `<option value="${esc(k)}" ${k === (p.category || '') ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>
   ${id ? `<button type="button" class="link red" onclick="delProd('${id}')">ลบสินค้านี้</button>` : ''}`,
-    async v => ok(id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v)));
+    async v => {
+      v.unit = v.unit === '__other' ? ((v.unit_other || '').trim() || 'ชิ้น') : v.unit;
+      delete v.unit_other;
+      // โหมดสถานะ: ไม่ส่ง qty/min_qty (คงค่าเดิมในฐานข้อมูล) / โหมดจำนวน: รีเซ็ตสถานะเป็น ok
+      if (v.track_mode === 'status') { delete v.qty; delete v.min_qty; } else { v.status = 'ok'; }
+      return ok(id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v));
+    });
 }
 async function delProd(id) { if (confirm('ลบสินค้านี้?') && ok(await sb.from('products').delete().eq('id', id))) { $('#sheet').close(); load(); } }
 async function delTask(id) { if (confirm('ลบงานนี้?') && ok(await sb.from('tasks').delete().eq('id', id))) load(); }
