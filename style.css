@@ -114,3 +114,20 @@ input:focus,select:focus,textarea:focus,button:focus-visible,a:focus-visible{out
 .ctrack.big{height:14px;margin-top:12px}
 .dstat{margin-top:4px}.dstat div{background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:12px 14px}
 .dstat span{display:block;font-size:13px}.dstat b{display:block;font:600 22px 'Prompt',sans-serif}
+.stat.on{outline:2px solid var(--acc);outline-offset:-1px}
+.s-ok{background:var(--grn)}.v-ok{color:var(--grn)}
+.card.okc .bar i{background:var(--grn)}
+/* หน้าพนักงาน: ดูสินค้าและนับสต๊อกเอง */
+button.hero{width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer}
+.hero small{display:block;margin-top:2px;font-size:13px;font-weight:400;color:var(--mut)}
+.hero.sel{outline:2px solid var(--acc);outline-offset:-1px}
+.tools{margin:2px 0 10px}.tools input{margin:0}
+.chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;margin-bottom:10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:none;border:1px solid var(--line);background:var(--card);color:var(--mut);border-radius:99px;padding:7px 14px;font:inherit;font-size:14px}
+.chip.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.counter{display:flex;align-items:center;gap:8px;margin-top:12px}
+.counter input{flex:none;width:84px;margin:0;padding:10px 6px;text-align:center;font:600 18px 'Prompt',sans-serif}
+.step{flex:none;width:44px;height:44px;border-radius:12px;border:1.5px solid var(--line);background:var(--bg);color:var(--ink);font:600 22px/1 'Prompt',sans-serif}
+.step:active{transform:scale(.94)}
+.counter .btn{flex:1;width:auto;margin:0}
