@@ -20,8 +20,6 @@ const NOCAT = 'ไม่ระบุหมวด';
 const catOf = p => String(p.category || '').trim() || NOCAT;
 // ต้องเติมหรือไม่ (รองรับทั้งสินค้านับจำนวนและนับสถานะ - stOf อยู่ใน common.js)
 const isLow = p => stOf(p) !== 'ok';
-// ตัวเลข % ของสต๊อกเทียบกับขั้นต่ำ มีสีตามระดับ (สินค้านับสถานะไม่แสดง %)
-const pcS = p => (isSt(p) || +p.min_qty <= 0) ? '' : `<b class="pc v-${stOf(p)}">${Math.round(+p.qty / +p.min_qty * 100)}%</b>`;
 (async () => {
   me = await guard(); if (!me) return;
   $('#who').textContent = me.name;
@@ -68,7 +66,7 @@ const toggleLow = () => { onlyLow = !onlyLow; draw(); };
 // - นับสถานะ: ปุ่มเลือก มีพอ / ใกล้หมด / หมด (แตะแล้วบันทึกทันที)
 function card(p) {
   const k = stOf(p), low = k !== 'ok', out = k === 'out', cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
-  const head = `<div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${isSt(p) ? 'สถานะในระบบ: ' + STL[p.status || 'ok'] : `ในระบบ ${p.qty} ${esc(p.unit)} · ขั้นต่ำ ${p.min_qty}`}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LVN[k]}</span>${pcS(p)}</div></div>`;
+  const head = `<div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${isSt(p) ? 'สถานะในระบบ: ' + STL[p.status || 'ok'] : `ในระบบ ${p.qty} ${esc(p.unit)} · ขั้นต่ำ ${p.min_qty}`}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LVN[k]}</span></div></div>`;
   if (isSt(p)) return `<article class="card ${low ? 'lv-' + k : ''}">${head}<div class="segs">${['ok', 'low', 'out'].map(s => `<button type="button" class="seg g-${s} ${(p.status || 'ok') === s ? 'on' : ''}" onclick="setStatus('${p.id}','${s}')">${STL[s]}</button>`).join('')}</div></article>`;
   const v = dr[p.id] ?? p.qty;
   return `<article class="card ${low ? 'lv-' + k : ''}">${head}
