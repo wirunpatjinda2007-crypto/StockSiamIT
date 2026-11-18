@@ -13,10 +13,15 @@ async function load() {
     sb.from('profiles').select('*').order('name'),
     sb.from('tasks').select('*').order('created_at', { ascending: false }),
     sb.from('feedback').select('*').order('created_at', { ascending: false })]);
-  P = a.data || []; S = b.data || []; T = c.data || []; F = d.data || []; render();
+  P = a.data || []; S = b.data || []; T = c.data || []; F = d.data || [];
+  if (tab === 'hist') await loadHist();
+  render();
 }
 // สลับแท็บ
-function go(t) { tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t)); render(); }
+function go(t) {
+  tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
+  if (t === 'hist') { H = null; render(); loadHist().then(render); } else render();
+}
 // สัดส่วนที่เหลือเทียบกับขั้นต่ำ (0 = หมด, 1 = ถึงขั้นต่ำ) ใช้จัดลำดับความเร่งด่วน
 // สินค้านับแบบสถานะ: หมด=0, ใกล้หมด=0.5, มีพอ=1
 const pct = p => isSt(p) ? ({ out: 0, low: 0.5, ok: 1 }[p.status] ?? 1) : (+p.min_qty > 0 ? +p.qty / +p.min_qty : 0);
@@ -29,7 +34,7 @@ const who = id => (S.find(x => x.id === id) || {}).name || '-';
 function render() {
   const n = low().length; $('#n').hidden = !n; $('#n').textContent = n;
   const u = F.filter(x => x.status === 'todo').length; $('#fbn').hidden = !u; $('#fbn').textContent = u;
-  ({ short: renderShort, prod: renderProd, task: renderTask, fb: renderFb })[tab]();
+  ({ short: renderShort, prod: renderProd, task: renderTask, hist: renderHist, fb: renderFb })[tab]();
 }
 // ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด (คำนวณใน stOf ที่ common.js)
 const lvl = p => stOf(p);
@@ -55,7 +60,9 @@ const clearFilter = () => { view = 'low'; fl = ''; cat = ''; render(); };
 const IC = {
   box: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></svg>',
   ok: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 5 5 9-10"/></svg>',
-  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5h.01"/></svg>'
+  warn: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v6"/><path d="M12 16.5h.01"/></svg>',
+  list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
+  user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>'
 };
 // กราฟโดนัท: แต่ละส่วนกดเพื่อกรองรายการด้านล่าง (ส่วน 'ปกติ' = ดูเฉพาะของปกติ)
 function donut(c, total) {
@@ -131,6 +138,59 @@ function renderShort() {
       return `<article class="card tap lv-${k}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LV[k]}</span></div></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
         (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="event.stopPropagation();openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
     }).join('');
+}
+// ===== แท็บ 'ประวัติ': ดูรายการเปลี่ยนแปลงสต๊อกทีละสัปดาห์ (สัปดาห์เริ่มวันจันทร์) =====
+// H = รายการประวัติของสัปดาห์ที่เลือก (null = กำลังโหลด) hw = 0 สัปดาห์นี้ / -1 สัปดาห์ที่แล้ว ...
+// hq = คำค้นหาชื่อสินค้า hk = ตัวกรองประเภท (all=ทั้งหมด, cnt=นับสต๊อก, mng=จัดการสินค้า)
+let H = null, hw = 0, hq = '', hk = 'all';
+const HK = { all: 'ทั้งหมด', cnt: 'นับสต๊อก', mng: 'จัดการสินค้า' };
+const HACT = { qty: 'ปรับยอด', status: 'เปลี่ยนสถานะ', add: 'เพิ่มสินค้า', edit: 'แก้ข้อมูล', delete: 'ลบสินค้า' };
+// วันจันทร์ 00:00 ของสัปดาห์ที่ off (0 = สัปดาห์นี้)
+const wStart = off => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7 + off * 7); return d; };
+// ดึงประวัติเฉพาะสัปดาห์ที่เลือกจากตาราง stock_logs
+async function loadHist() {
+  const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
+  const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).lt('created_at', e.toISOString()).order('created_at', { ascending: false }).limit(1000);
+  if (r.error) { toast(r.error.message); H = []; return; }
+  H = r.data || [];
+}
+// เลื่อนสัปดาห์ (-1 = ก่อนหน้า, +1 = ถัดไป, ไม่เกินสัปดาห์นี้)
+function hwk(n) { hw = Math.min(0, hw + n); H = null; renderHist(); loadHist().then(render); }
+const stTxt = v => `<b class="v-${esc(v)}">${esc(STL[v] || v)}</b>`;
+// คำอธิบายการเปลี่ยนแปลงของแต่ละรายการ
+function hDesc(x) {
+  const u = esc(x.unit || '');
+  if (x.action === 'qty') { const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
+    return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>`; }
+  if (x.action === 'status') return `${stTxt(x.old_value)} → ${stTxt(x.new_value)}`;
+  if (x.action === 'add') return 'เพิ่มสินค้าใหม่' + (x.new_value ? ' · เริ่มที่ ' + (x.track_mode === 'status' ? esc(STL[x.new_value] || x.new_value) : (+x.new_value) + ' ' + u) : '');
+  if (x.action === 'edit') return 'แก้ไขข้อมูลสินค้า (ชื่อ / ขั้นต่ำ / หน่วย / หมวด / วิธีนับ)';
+  return 'ลบสินค้าออกจากระบบ';
+}
+// วาดหน้าประวัติ: ตัวเลื่อนสัปดาห์ + สรุป + ค้นหา/กรอง + รายการ
+function renderHist() {
+  if (tab !== 'hist') return;
+  const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
+  const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  const label = `${f(s)} – ${f(e)} ${e.toLocaleDateString('th-TH', { year: 'numeric' })}`;
+  const title = hw === 0 ? 'สัปดาห์นี้' : hw === -1 ? 'สัปดาห์ที่แล้ว' : 'ย้อนหลัง ' + (-hw) + ' สัปดาห์';
+  const wk = `<div class="wk"><button onclick="hwk(-1)" aria-label="สัปดาห์ก่อนหน้า">‹</button><div><b>${title}</b><span>${label}</span></div><button onclick="hwk(1)" ${hw >= 0 ? 'disabled' : ''} aria-label="สัปดาห์ถัดไป">›</button></div>`;
+  if (H === null) { $('#main').innerHTML = wk + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
+  const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
+  const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
+  const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
+  $('#main').innerHTML = wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>';
+  histList();
+}
+// วาดเฉพาะรายการประวัติ (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา) จัดกลุ่มตามวัน
+function histList() {
+  const el = $('#hl'); if (!el) return;
+  const s = hq.trim().toLowerCase();
+  const L = H.filter(x => (hk === 'all' || (hk === 'cnt' ? ['qty', 'status'].includes(x.action) : ['add', 'edit', 'delete'].includes(x.action))) && (!s || String(x.product_name || '').toLowerCase().includes(s)));
+  if (!L.length) { el.innerHTML = `<p class="mut" style="text-align:center;margin:20px 0">${H.length ? 'ไม่พบรายการที่ตรงกับตัวกรอง' : 'ยังไม่มีรายการในสัปดาห์นี้'}</p>`; return; }
+  const days = {};
+  L.forEach(x => { const k = new Date(x.created_at).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' }); (days[k] = days[k] || []).push(x); });
+  el.innerHTML = Object.keys(days).map(k => `<section class="card hday"><h3>${k} · ${days[k].length} รายการ</h3>${days[k].map(x => `<div class="hrow"><i class="hdot a-${esc(x.action)}"></i><div class="hbody"><div class="row"><h4>${esc(x.product_name)}</h4><span class="mut">${new Date(x.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span></div><p class="hd">${hDesc(x)}</p><p class="mut">${esc(HACT[x.action] || x.action)} · โดย ${esc(who(x.user_id))}</p></div></div>`).join('')}</section>`).join('');
 }
 // แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
 function renderFb() {
