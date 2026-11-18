@@ -171,6 +171,15 @@ async function delWeekLogs() {
   if (!ok(await sb.from('stock_logs').delete().gte('created_at', s.toISOString()).lt('created_at', e.toISOString()))) return;
   toast('ลบประวัติสัปดาห์นี้แล้ว'); H = null; await loadHist(); render();
 }
+// สร้าง/อัปเดตรายงานของ "สัปดาห์ที่เลือกอยู่" (ย้อนหลังได้) แล้วพาไปดูที่มุมมองรายงานสัปดาห์
+async function genWeekReport() {
+  const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
+  const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  if (!confirm(`สร้างรายงานของสัปดาห์ ${f(s)} – ${f(e)} ?\n(ถ้าสัปดาห์นี้เคยมีรายงานแล้ว จะถูกอัปเดตทับ)`)) return;
+  const ymd = `${s.getFullYear()}-${String(s.getMonth() + 1).padStart(2, '0')}-${String(s.getDate()).padStart(2, '0')}`;
+  if (!ok(await sb.rpc('generate_weekly_report', { p_week: ymd }))) return;
+  toast('สร้างรายงานแล้ว'); hv = 'rep'; H = null; RP = null; renderHist(); await loadHist(); render();
+}
 const stTxt = v => `<b class="v-${esc(v)}">${esc(STL[v] || v)}</b>`;
 // คำอธิบายการเปลี่ยนแปลงของแต่ละรายการ
 function hDesc(x) {
@@ -195,7 +204,7 @@ function renderHist() {
   const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
   const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
   const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
-  $('#main').innerHTML = hvTabs() + wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
+  $('#main').innerHTML = hvTabs() + wk + `<button class="btn ghost add" onclick="genWeekReport()">สร้างรายงานของสัปดาห์ที่เลือก</button>` + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
     + (H.length ? `<button class="link red" style="display:block;margin:6px auto 0" onclick="delWeekLogs()">ลบประวัติสัปดาห์นี้ (${H.length} รายการ)</button>` : '');
   histList();
 }
