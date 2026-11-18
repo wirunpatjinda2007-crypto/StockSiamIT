@@ -204,7 +204,7 @@ function renderHist() {
   const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
   const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
   const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
-  $('#main').innerHTML = hvTabs() + wk + `<button class="btn ghost add" onclick="genWeekReport()">สร้างรายงานของสัปดาห์ที่เลือก</button>` + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
+  $('#main').innerHTML = hvTabs() + wk + `<button class="btn ghost add" onclick="genWeekReport()">สร้างรายการของสัปดาห์นี้</button>` + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
     + (H.length ? `<button class="link red" style="display:block;margin:6px auto 0" onclick="delWeekLogs()">ลบประวัติสัปดาห์นี้ (${H.length} รายการ)</button>` : '');
   histList();
 }
@@ -223,6 +223,9 @@ function histList() {
 const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button></div>`;
 function setHv(v) { hv = v; H = null; RP = null; renderHist(); loadHist().then(render); }
 const LVC = { out: 'red', crit: 'org', low: 'amb', ok: 'grn' };
+// repSel = หมวดที่กดเปิดดูในแต่ละรายงาน (id รายงาน -> ok/low/crit/out) แตะซ้ำเพื่อปิด
+let repSel = {};
+function repPick(id, k) { repSel[id] = repSel[id] === k ? '' : k; renderRep(); }
 // กดสร้างรายงานของสัปดาห์นี้ทันที (ไว้ทดสอบ/ดูก่อนถึงวันจันทร์) - เรียกฟังก์ชัน generate_weekly_report ในฐานข้อมูล
 async function genReport() {
   if (!ok(await sb.rpc('generate_weekly_report', { p_which: 'this' }))) return;
@@ -234,7 +237,7 @@ async function delReport(id) {
   if (!ok(await sb.from('weekly_reports').delete().eq('id', id))) return;
   toast('ลบรายงานแล้ว'); RP = null; await loadHist(); render();
 }
-// วาดหน้ารายงานสัปดาห์: การ์ดต่อสัปดาห์ (ใหม่สุดอยู่บน) มีสรุปจำนวนตามระดับ + รายการที่ต้องเติม + ผู้นับสต๊อก
+// วาดหน้ารายงานสัปดาห์: การ์ดต่อสัปดาห์ (ใหม่สุดอยู่บน) มีสรุปจำนวนตามระดับ (แตะป้ายเพื่อดูรายการ) + ผู้นับสต๊อก
 function renderRep() {
   const top = hvTabs() + `<button class="btn ghost add" onclick="genReport()">สร้างรายงานสัปดาห์นี้ตอนนี้</button>`;
   if (RP === null) { $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
@@ -242,11 +245,13 @@ function renderRep() {
   const y = s => new Date(s + 'T00:00:00').toLocaleDateString('th-TH', { year: 'numeric' });
   const item = i => `<div class="rit"><div>${esc(i.name)}<small>${i.mode === 'status' ? 'นับตามสถานะ' : (+i.qty) + ' / ขั้นต่ำ ' + (+i.min) + ' ' + esc(i.unit || '')}</small></div><span class="tag ${LVC[i.level] || 'amb'}">${LV[i.level] || i.level}</span></div>`;
   $('#main').innerHTML = top + (RP.length ? RP.map(x => {
-    const its = x.items || [], bu = x.by_user || [];
+    const its = x.items || [], bu = x.by_user || [], sel = repSel[x.id] || '';
+    const cnt = { ok: x.n_ok, low: x.n_low, crit: x.n_crit, out: x.n_out };
+    const shown = sel ? its.filter(i => i.level === sel) : [];
     return `<article class="card rep"><div class="row"><h3>${d(x.week_start)} – ${d(x.week_end)} ${y(x.week_end)}</h3><span class="mut">สร้างเมื่อ ${new Date(x.created_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} น.</span></div>
-    <div class="rtags"><span class="tag grn">ปกติ ${x.n_ok}</span><span class="tag amb">ใกล้หมด ${x.n_low}</span><span class="tag org">เหลือน้อยมาก ${x.n_crit}</span><span class="tag red">หมด ${x.n_out}</span></div>
+    <div class="rtags">${['ok', 'low', 'crit', 'out'].map(k => `<button class="tag ${LVC[k]} rtg ${sel === k ? 'on' : ''}" ${cnt[k] ? '' : 'disabled'} onclick="repPick('${x.id}','${k}')">${LV[k]} ${cnt[k]}</button>`).join('')}</div>
     <p class="mut" style="margin-top:8px">สินค้าทั้งหมด ${x.total} รายการ · ปรับสต๊อก ${x.n_changes} ครั้ง (${x.n_products} สินค้า, ${x.n_people} คน)</p>
-    ${its.length ? `<details><summary>ต้องเติม ${its.length} รายการ</summary>${its.map(item).join('')}</details>` : '<p class="mut" style="margin-top:8px">✓ สต๊อกครบทุกรายการ</p>'}
+    ${sel ? (shown.length ? `<div class="rlist">${shown.map(item).join('')}</div>` : `<p class="mut" style="margin-top:10px">${sel === 'ok' && cnt.ok ? 'รายงานฉบับนี้สร้างก่อนอัปเดต จึงไม่ได้เก็บรายการที่ปกติไว้ กดสร้างรายการของสัปดาห์นี้ใหม่เพื่ออัปเดต' : 'ไม่มีรายการในหมวดนี้'}</p>`) : '<p class="mut hint" style="margin-top:8px">แตะป้ายด้านบนเพื่อดูรายการสินค้าในแต่ละหมวด</p>'}
     ${bu.length ? `<p class="mut" style="margin-top:8px">ผู้ทำรายการ: ${bu.map(u => esc(u.name) + ' ' + u.n + ' ครั้ง').join(' · ')}</p>` : ''}
     <button class="link red" onclick="delReport('${x.id}')">ลบรายงานนี้</button></article>`;
   }).join('') : '<p class="mut" style="text-align:center;margin:20px 0">ยังไม่มีรายงาน ระบบจะสร้างให้อัตโนมัติทุกเช้าวันจันทร์ (หรือกดปุ่มด้านบนเพื่อสร้างทันที)</p>');
