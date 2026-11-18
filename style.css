@@ -195,3 +195,8 @@ nav button[data-t=hist]{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3
 .rep summary{cursor:pointer;font-weight:500;color:var(--acc);padding:6px 0}
 .rit{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 0;border-top:1px dashed var(--line);font-size:15px}
 .rit small{display:block;color:var(--mut);font-size:13px}
+/* ตัวเลือกวันที่ใต้ตัวเลื่อนสัปดาห์ + รายงานของสัปดาห์ที่เลือก */
+.wkx{display:flex;align-items:center;gap:8px;margin:-4px 0 12px}
+.wkx input{flex:1;margin:0;padding:9px 12px;font-size:15px;background:var(--card);border-radius:12px}
+.wkx .chip{flex:none}
+.card.rep.sel{outline:2px solid var(--acc);outline-offset:-1px}
