@@ -200,3 +200,8 @@ nav button[data-t=hist]{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3
 .wkx input{flex:1;margin:0;padding:9px 12px;font-size:15px;background:var(--card);border-radius:12px}
 .wkx .chip{flex:none}
 .card.rep.sel{outline:2px solid var(--acc);outline-offset:-1px}
+/* ป้ายสถานะในรายงานที่กดได้ (ปกติ / ใกล้หมด / เหลือน้อยมาก / หมด) */
+button.tag{border:0;cursor:pointer;line-height:1.5}
+.rtg.on{outline:2px solid currentColor;outline-offset:1px}
+.rtg:disabled{opacity:.45;cursor:default}
+.rlist{margin-top:10px;border-top:1px solid var(--line);padding-top:2px}
