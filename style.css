@@ -59,7 +59,7 @@ main{padding:18px 16px calc(112px + env(safe-area-inset-bottom));max-width:640px
 .link{background:none;border:0;font:inherit;padding:10px 0}.link.red{color:var(--red)}
 /* เมนูล่างแบบลอย + ไอคอนแต่ละแท็บ (nav button[data-t=...]) */
 nav{position:fixed;left:12px;right:12px;max-width:616px;margin:0 auto;bottom:calc(10px + env(safe-area-inset-bottom));display:flex;gap:4px;padding:6px;background:color-mix(in srgb,var(--card) 92%,transparent);backdrop-filter:blur(10px);border:1px solid var(--line);border-radius:24px;box-shadow:0 14px 32px -12px rgba(11,33,80,.4)}
-nav button{flex:1;background:none;border:0;border-radius:18px;padding:8px 2px;font:inherit;font-size:12.5px;color:var(--mut);position:relative;transition:background .15s,color .15s}
+nav button{flex:1;background:none;border:0;border-radius:18px;padding:8px 2px;font:inherit;font-size:12px;color:var(--mut);position:relative;transition:background .15s,color .15s}
 nav button.on{background:var(--accbg);color:var(--acc);font-weight:600}
 nav button::before{content:'';display:block;width:22px;height:22px;margin:0 auto 2px;background:currentColor;-webkit-mask:var(--ic) center/contain no-repeat;mask:var(--ic) center/contain no-repeat}
 nav button[data-t=short]{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z'/%3E%3Cpath d='M12 9v4'/%3E%3Cpath d='M12 17h.01'/%3E%3C/svg%3E")}
@@ -167,3 +167,25 @@ button.hero{width:100%;text-align:left;font:inherit;color:inherit;cursor:pointer
 .seg.on.g-out{background:var(--red);border-color:var(--red)}
 /* การ์ดค่อยๆ เลื่อนขึ้นตอนโหลด */
 .card{animation:pop .25s ease-out both}
+
+/* ไอคอนแท็บประวัติ (นาฬิกา) */
+nav button[data-t=hist]{--ic:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E")}
+/* แท็บประวัติ: ตัวเลื่อนสัปดาห์ */
+.wk{display:flex;align-items:center;justify-content:space-between;gap:10px;background:var(--card);border:1px solid var(--line);border-radius:18px;padding:8px;margin-bottom:12px;box-shadow:var(--sh)}
+.wk button{flex:none;width:44px;height:44px;border-radius:14px;border:0;background:var(--accbg);color:var(--acc);font:600 24px/1 'Prompt',sans-serif}
+.wk button:disabled{opacity:.35;cursor:default}
+.wk div{text-align:center}.wk b{display:block;font:600 16px 'Prompt',sans-serif}.wk span{font-size:13px;color:var(--mut)}
+.stat.inert{cursor:default}.stat.inert:active{transform:none}
+/* รายการประวัติจัดกลุ่มตามวัน */
+.hday h3{font-size:15px;color:var(--navy2);margin-bottom:6px}
+.hrow{display:flex;gap:12px;padding:11px 0;border-top:1px solid var(--line)}
+.hday h3+.hrow{border-top:0}
+.hdot{flex:none;width:10px;height:10px;border-radius:50%;margin-top:8px;background:var(--mut)}
+.hdot.a-qty{background:var(--acc)}.hdot.a-status{background:var(--yel)}.hdot.a-add{background:var(--grn)}.hdot.a-edit{background:var(--mut)}.hdot.a-delete{background:var(--red)}
+.hbody{flex:1;min-width:0}
+.hbody h4{font:600 15px/1.35 'Prompt','IBM Plex Sans Thai',sans-serif}
+.hbody .mut{white-space:nowrap}
+.hbody>.mut{white-space:normal}
+.hd{font-size:15px;margin:2px 0}
+.dlt{display:inline-block;font:600 12.5px/1 'Prompt',sans-serif;padding:3px 8px;border-radius:99px;margin-left:6px;vertical-align:1px}
+.dlt.up{background:var(--grnbg);color:var(--grn)}.dlt.dn{background:var(--redbg);color:var(--red)}
