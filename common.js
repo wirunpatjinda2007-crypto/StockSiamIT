@@ -1,5 +1,11 @@
 // เชื่อมต่อ Supabase (ใช้ค่าจาก config.js) - ตัวแปร sb ใช้เรียกฐานข้อมูลทุกหน้า
-const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+// เก็บสถานะล็อกอินไว้ใน sessionStorage (หายเมื่อปิดแท็บ/ปิดเว็บ) จึงต้องล็อกอินใหม่ทุกครั้งที่เปิดเว็บใหม่
+// (ถ้าอยากกลับไปแบบจำการล็อกอินไว้ ให้ลบบรรทัด auth: {...} ออก)
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+  auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true }
+});
+// ล้างสถานะล็อกอินเก่าที่เคยจำไว้ในเครื่อง (localStorage) จากเวอร์ชันก่อน
+try { Object.keys(localStorage).filter(k => /^sb-.*-auth-token/.test(k)).forEach(k => localStorage.removeItem(k)); } catch (e) {}
 // ทางลัด: $('#id') = document.querySelector
 const $ = (s, r = document) => r.querySelector(s);
 // กันข้อความที่ผู้ใช้พิมพ์ทำให้หน้าเว็บพัง (ใช้ครอบข้อความก่อนแสดงเสมอ)

@@ -162,6 +162,15 @@ async function loadHist() {
 }
 // เลื่อนสัปดาห์ (-1 = ก่อนหน้า, +1 = ถัดไป, ไม่เกินสัปดาห์นี้)
 function hwk(n) { hw = Math.min(0, hw + n); H = null; renderHist(); loadHist().then(render); }
+// ลบประวัติทั้งหมดของสัปดาห์ที่เลือก (ลบเฉพาะตาราง stock_logs ไม่กระทบสินค้า/ยอดสต๊อก และไม่กระทบรายงานสัปดาห์ที่สร้างไว้แล้ว)
+async function delWeekLogs() {
+  const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
+  const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  const last = new Date(e); last.setDate(last.getDate() - 1);
+  if (!confirm(`ลบประวัติทั้งหมดของสัปดาห์ ${f(s)} – ${f(last)} ?\n(${H.length} รายการ) ลบแล้วกู้คืนไม่ได้`)) return;
+  if (!ok(await sb.from('stock_logs').delete().gte('created_at', s.toISOString()).lt('created_at', e.toISOString()))) return;
+  toast('ลบประวัติสัปดาห์นี้แล้ว'); H = null; await loadHist(); render();
+}
 const stTxt = v => `<b class="v-${esc(v)}">${esc(STL[v] || v)}</b>`;
 // คำอธิบายการเปลี่ยนแปลงของแต่ละรายการ
 function hDesc(x) {
@@ -186,7 +195,8 @@ function renderHist() {
   const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
   const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
   const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
-  $('#main').innerHTML = hvTabs() + wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>';
+  $('#main').innerHTML = hvTabs() + wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
+    + (H.length ? `<button class="link red" style="display:block;margin:6px auto 0" onclick="delWeekLogs()">ลบประวัติสัปดาห์นี้ (${H.length} รายการ)</button>` : '');
   histList();
 }
 // วาดเฉพาะรายการประวัติ (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา) จัดกลุ่มตามวัน
@@ -209,6 +219,12 @@ async function genReport() {
   if (!ok(await sb.rpc('generate_weekly_report', { p_which: 'this' }))) return;
   toast('สร้างรายงานแล้ว'); RP = null; await loadHist(); render();
 }
+// ลบรายงานสัปดาห์ 1 ฉบับ
+async function delReport(id) {
+  if (!confirm('ลบรายงานสัปดาห์นี้? ลบแล้วกู้คืนไม่ได้')) return;
+  if (!ok(await sb.from('weekly_reports').delete().eq('id', id))) return;
+  toast('ลบรายงานแล้ว'); RP = null; await loadHist(); render();
+}
 // วาดหน้ารายงานสัปดาห์: การ์ดต่อสัปดาห์ (ใหม่สุดอยู่บน) มีสรุปจำนวนตามระดับ + รายการที่ต้องเติม + ผู้นับสต๊อก
 function renderRep() {
   const top = hvTabs() + `<button class="btn ghost add" onclick="genReport()">สร้างรายงานสัปดาห์นี้ตอนนี้</button>`;
@@ -222,7 +238,8 @@ function renderRep() {
     <div class="rtags"><span class="tag grn">ปกติ ${x.n_ok}</span><span class="tag amb">ใกล้หมด ${x.n_low}</span><span class="tag org">เหลือน้อยมาก ${x.n_crit}</span><span class="tag red">หมด ${x.n_out}</span></div>
     <p class="mut" style="margin-top:8px">สินค้าทั้งหมด ${x.total} รายการ · ปรับสต๊อก ${x.n_changes} ครั้ง (${x.n_products} สินค้า, ${x.n_people} คน)</p>
     ${its.length ? `<details><summary>ต้องเติม ${its.length} รายการ</summary>${its.map(item).join('')}</details>` : '<p class="mut" style="margin-top:8px">✓ สต๊อกครบทุกรายการ</p>'}
-    ${bu.length ? `<p class="mut" style="margin-top:8px">ผู้ทำรายการ: ${bu.map(u => esc(u.name) + ' ' + u.n + ' ครั้ง').join(' · ')}</p>` : ''}</article>`;
+    ${bu.length ? `<p class="mut" style="margin-top:8px">ผู้ทำรายการ: ${bu.map(u => esc(u.name) + ' ' + u.n + ' ครั้ง').join(' · ')}</p>` : ''}
+    <button class="link red" onclick="delReport('${x.id}')">ลบรายงานนี้</button></article>`;
   }).join('') : '<p class="mut" style="text-align:center;margin:20px 0">ยังไม่มีรายงาน ระบบจะสร้างให้อัตโนมัติทุกเช้าวันจันทร์ (หรือกดปุ่มด้านบนเพื่อสร้างทันที)</p>');
 }
 // แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
