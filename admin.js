@@ -20,7 +20,7 @@ async function load() {
 // สลับแท็บ
 function go(t) {
   tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  if (t === 'hist') { H = null; render(); loadHist().then(render); } else render();
+  if (t === 'hist') { H = null; RP = null; render(); loadHist().then(render); } else render();
 }
 // สัดส่วนที่เหลือเทียบกับขั้นต่ำ (0 = หมด, 1 = ถึงขั้นต่ำ) ใช้จัดลำดับความเร่งด่วน
 // สินค้านับแบบสถานะ: หมด=0, ใกล้หมด=0.5, มีพอ=1
@@ -142,13 +142,19 @@ function renderShort() {
 // ===== แท็บ 'ประวัติ': ดูรายการเปลี่ยนแปลงสต๊อกทีละสัปดาห์ (สัปดาห์เริ่มวันจันทร์) =====
 // H = รายการประวัติของสัปดาห์ที่เลือก (null = กำลังโหลด) hw = 0 สัปดาห์นี้ / -1 สัปดาห์ที่แล้ว ...
 // hq = คำค้นหาชื่อสินค้า hk = ตัวกรองประเภท (all=ทั้งหมด, cnt=นับสต๊อก, mng=จัดการสินค้า)
-let H = null, hw = 0, hq = '', hk = 'all';
+// hv = มุมมองในแท็บประวัติ (log = การเปลี่ยนแปลงรายสัปดาห์ / rep = รายงานสรุปอัตโนมัติ) RP = รายการรายงานสัปดาห์ (null = กำลังโหลด)
+let H = null, hw = 0, hq = '', hk = 'all', hv = 'log', RP = null;
 const HK = { all: 'ทั้งหมด', cnt: 'นับสต๊อก', mng: 'จัดการสินค้า' };
 const HACT = { qty: 'ปรับยอด', status: 'เปลี่ยนสถานะ', add: 'เพิ่มสินค้า', edit: 'แก้ข้อมูล', delete: 'ลบสินค้า' };
 // วันจันทร์ 00:00 ของสัปดาห์ที่ off (0 = สัปดาห์นี้)
 const wStart = off => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7 + off * 7); return d; };
-// ดึงประวัติเฉพาะสัปดาห์ที่เลือกจากตาราง stock_logs
+// ดึงข้อมูลแท็บประวัติ: มุมมองรายงาน = ตาราง weekly_reports / มุมมองการเปลี่ยนแปลง = ตาราง stock_logs เฉพาะสัปดาห์ที่เลือก
 async function loadHist() {
+  if (hv === 'rep') {
+    const q = await sb.from('weekly_reports').select('*').order('week_start', { ascending: false }).limit(52);
+    if (q.error) { toast(q.error.message); RP = []; return; }
+    RP = q.data || []; return;
+  }
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
   const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).lt('created_at', e.toISOString()).order('created_at', { ascending: false }).limit(1000);
   if (r.error) { toast(r.error.message); H = []; return; }
@@ -170,16 +176,17 @@ function hDesc(x) {
 // วาดหน้าประวัติ: ตัวเลื่อนสัปดาห์ + สรุป + ค้นหา/กรอง + รายการ
 function renderHist() {
   if (tab !== 'hist') return;
+  if (hv === 'rep') return renderRep();
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
   const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
   const label = `${f(s)} – ${f(e)} ${e.toLocaleDateString('th-TH', { year: 'numeric' })}`;
   const title = hw === 0 ? 'สัปดาห์นี้' : hw === -1 ? 'สัปดาห์ที่แล้ว' : 'ย้อนหลัง ' + (-hw) + ' สัปดาห์';
   const wk = `<div class="wk"><button onclick="hwk(-1)" aria-label="สัปดาห์ก่อนหน้า">‹</button><div><b>${title}</b><span>${label}</span></div><button onclick="hwk(1)" ${hw >= 0 ? 'disabled' : ''} aria-label="สัปดาห์ถัดไป">›</button></div>`;
-  if (H === null) { $('#main').innerHTML = wk + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
+  if (H === null) { $('#main').innerHTML = hvTabs() + wk + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
   const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
   const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
   const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
-  $('#main').innerHTML = wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>';
+  $('#main').innerHTML = hvTabs() + wk + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>';
   histList();
 }
 // วาดเฉพาะรายการประวัติ (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา) จัดกลุ่มตามวัน
@@ -191,6 +198,32 @@ function histList() {
   const days = {};
   L.forEach(x => { const k = new Date(x.created_at).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' }); (days[k] = days[k] || []).push(x); });
   el.innerHTML = Object.keys(days).map(k => `<section class="card hday"><h3>${k} · ${days[k].length} รายการ</h3>${days[k].map(x => `<div class="hrow"><i class="hdot a-${esc(x.action)}"></i><div class="hbody"><div class="row"><h4>${esc(x.product_name)}</h4><span class="mut">${new Date(x.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span></div><p class="hd">${hDesc(x)}</p><p class="mut">${esc(HACT[x.action] || x.action)} · โดย ${esc(who(x.user_id))}</p></div></div>`).join('')}</section>`).join('');
+}
+// ===== รายงานสรุปรายสัปดาห์ (ระบบสร้างให้อัตโนมัติทุกเช้าวันจันทร์ด้วย pg_cron ดูไฟล์ weekly_report.sql) =====
+// ปุ่มสลับมุมมองด้านบนของแท็บประวัติ
+const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button></div>`;
+function setHv(v) { hv = v; H = null; RP = null; renderHist(); loadHist().then(render); }
+const LVC = { out: 'red', crit: 'org', low: 'amb', ok: 'grn' };
+// กดสร้างรายงานของสัปดาห์นี้ทันที (ไว้ทดสอบ/ดูก่อนถึงวันจันทร์) - เรียกฟังก์ชัน generate_weekly_report ในฐานข้อมูล
+async function genReport() {
+  if (!ok(await sb.rpc('generate_weekly_report', { p_which: 'this' }))) return;
+  toast('สร้างรายงานแล้ว'); RP = null; await loadHist(); render();
+}
+// วาดหน้ารายงานสัปดาห์: การ์ดต่อสัปดาห์ (ใหม่สุดอยู่บน) มีสรุปจำนวนตามระดับ + รายการที่ต้องเติม + ผู้นับสต๊อก
+function renderRep() {
+  const top = hvTabs() + `<button class="btn ghost add" onclick="genReport()">สร้างรายงานสัปดาห์นี้ตอนนี้</button>`;
+  if (RP === null) { $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
+  const d = s => new Date(s + 'T00:00:00').toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
+  const y = s => new Date(s + 'T00:00:00').toLocaleDateString('th-TH', { year: 'numeric' });
+  const item = i => `<div class="rit"><div>${esc(i.name)}<small>${i.mode === 'status' ? 'นับตามสถานะ' : (+i.qty) + ' / ขั้นต่ำ ' + (+i.min) + ' ' + esc(i.unit || '')}</small></div><span class="tag ${LVC[i.level] || 'amb'}">${LV[i.level] || i.level}</span></div>`;
+  $('#main').innerHTML = top + (RP.length ? RP.map(x => {
+    const its = x.items || [], bu = x.by_user || [];
+    return `<article class="card rep"><div class="row"><h3>${d(x.week_start)} – ${d(x.week_end)} ${y(x.week_end)}</h3><span class="mut">สร้างเมื่อ ${new Date(x.created_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} น.</span></div>
+    <div class="rtags"><span class="tag grn">ปกติ ${x.n_ok}</span><span class="tag amb">ใกล้หมด ${x.n_low}</span><span class="tag org">เหลือน้อยมาก ${x.n_crit}</span><span class="tag red">หมด ${x.n_out}</span></div>
+    <p class="mut" style="margin-top:8px">สินค้าทั้งหมด ${x.total} รายการ · ปรับสต๊อก ${x.n_changes} ครั้ง (${x.n_products} สินค้า, ${x.n_people} คน)</p>
+    ${its.length ? `<details><summary>ต้องเติม ${its.length} รายการ</summary>${its.map(item).join('')}</details>` : '<p class="mut" style="margin-top:8px">✓ สต๊อกครบทุกรายการ</p>'}
+    ${bu.length ? `<p class="mut" style="margin-top:8px">ผู้ทำรายการ: ${bu.map(u => esc(u.name) + ' ' + u.n + ' ครั้ง').join(' · ')}</p>` : ''}</article>`;
+  }).join('') : '<p class="mut" style="text-align:center;margin:20px 0">ยังไม่มีรายงาน ระบบจะสร้างให้อัตโนมัติทุกเช้าวันจันทร์ (หรือกดปุ่มด้านบนเพื่อสร้างทันที)</p>');
 }
 // แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
 function renderFb() {
