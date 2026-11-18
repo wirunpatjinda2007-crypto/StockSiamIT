@@ -31,6 +31,26 @@
       --white: #ffffff;
     }
 
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --navy: #1e3a8a;
+        --blue: #4f7df3;
+        --blue-light: #1a2c5c;
+        --text: #eaf0ff;
+        --muted: #93a3c6;
+        --border: #1e2c52;
+        --white: #111c38;
+      }
+
+      body {
+        background: #0a1226;
+      }
+
+      .toast {
+        background: #1e2c52;
+      }
+    }
+
     body {
       min-height: 100vh;
       font-family: 'IBM Plex Sans Thai', sans-serif;
