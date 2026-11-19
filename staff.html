@@ -118,8 +118,19 @@ async function loadMine() {
 }
 const ACT = { qty: 'ปรับยอด', status: 'เปลี่ยนสถานะ', add: 'เพิ่มสินค้า', edit: 'แก้ข้อมูล', delete: 'ลบสินค้า' };
 function myDesc(x) {
-  if (x.action === 'qty') { const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
-    return `${a} → <b>${b}</b> ${esc(x.unit || '')}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>`; }
+  const u = esc(x.unit || '');
+  const pr = P.find(p => p.id === x.product_id || p.name === x.product_name);
+  const ps = +(x.pack_size || (pr && pr.pack_size) || 0);
+  if (x.action === 'qty') {
+    const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
+    let pkInfo = '';
+    if (ps > 0) {
+      const bPk = fmtPack(b, ps, u);
+      const aPk = fmtPack(a, ps, u);
+      pkInfo = `<span class="mut" style="display:block;font-size:13px;margin-top:2px">📦 รวมเป็น <b>${bPk}</b> <span style="opacity:.8">(จาก ${aPk} · แพ็คละ ${ps} ${u})</span></span>`;
+    }
+    return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>${pkInfo}`;
+  }
   if (x.action === 'status') return `${esc(STL[x.old_value] || x.old_value)} → <b>${esc(STL[x.new_value] || x.new_value)}</b>`;
   if (x.action === 'edit') return x.detail ? esc(x.detail).replace(/\n/g, '<br>') : 'แก้ไขข้อมูลสินค้า';
   return x.action === 'add' ? 'เพิ่มสินค้าใหม่' : 'ลบสินค้า';
