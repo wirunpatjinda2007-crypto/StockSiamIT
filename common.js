@@ -23,7 +23,7 @@ async function guard(role) {
 async function logout() { await sb.auth.signOut(); location.href = 'index.html'; }
 
 // ===== หน่วย + วิธีนับสินค้า =====
-const UNITS = ['ขวด', 'ชิ้น', 'อัน', 'ถุง', 'แพ็ค', 'กล่อง', 'ซอง', 'ม้วน', 'ชุด'];
+const UNITS = ['ขวด', 'ชิ้น', 'อัน', 'ถุง', 'แพ็ค', 'กล่อง', 'ซอง', 'ม้วน', 'ชุด', 'แผง', 'ลัง', 'กระป๋อง', 'ฟอง', 'แก้ว', 'โหล'];
 const STL = { ok: 'มีพอ', low: 'ใกล้หมด', out: 'หมด' };
 const isSt = p => p.track_mode === 'status';
 const stOf = p => {
@@ -35,19 +35,22 @@ const stOf = p => {
 };
 const TAGC = { ok: 'grn', low: 'amb', crit: 'org', out: 'red' };
 const LVN = { ok: 'ปกติ', low: 'ใกล้หมด', crit: 'เหลือน้อยมาก', out: 'หมด' };
-// ===== นับแบบแพ็ค: qty เก็บเป็น "ชิ้นรวม" เสมอ, pack_size = ชิ้นต่อ 1 แพ็ค =====
+// ===== นับแบบแพ็ค/บรรจุภัณฑ์: qty เก็บเป็น "ชิ้นรวม" เสมอ, pack_size = ชิ้นต่อ 1 หน่วยบรรจุ =====
+const PACK_UNITS = ['แพ็ค', 'แผง', 'ลัง', 'กล่อง', 'ถาด', 'โหล'];
+const pkUnitOf = p => (p && (p.pack_unit || (typeof localStorage !== 'undefined' && localStorage.getItem('pu_' + p.id)))) || 'แพ็ค';
 const isPk = p => !isSt(p) && +p.pack_size > 0;
 const fmtQ = p => {
   if (!isPk(p)) return `${p.qty} ${esc(p.unit)}`;
+  const pu = esc(pkUnitOf(p));
   const s = +p.pack_size, n = +p.qty, k = Math.floor(n / s), r = +(n - k * s).toFixed(2);
-  return `${k} แพ็ค${r ? ' + ' + r + ' ' + esc(p.unit) : ''} (= ${n} ${esc(p.unit)})`;
+  return `${k} ${pu}${r ? ' + ' + r + ' ' + esc(p.unit) : ''} (= ${n} ${esc(p.unit)})`;
 };
-// แปลงจำนวนเป็น "X แพ็ค Y หน่วย" (เช่น 2 แพ็ค 3 ขวด)
-const fmtPack = (qty, pack_size, unit = '') => {
-  const s = +pack_size, n = +qty;
+// แปลงจำนวนเป็น "X หน่วยบรรจุ Y หน่วยย่อย" (เช่น 2 แพ็ค 3 ขวด, 1 ลัง 4 กล่อง, 2 แผง 5 ฟอง)
+const fmtPack = (qty, pack_size, unit = '', pack_unit = 'แพ็ค') => {
+  const s = +pack_size, n = +qty, pu = esc(pack_unit || 'แพ็ค');
   if (!s || s <= 0) return `${n} ${esc(unit)}`.trim();
   const k = Math.floor(n / s), r = +(n - k * s).toFixed(2);
-  if (k > 0 && r > 0) return `${k} แพ็ค ${r} ${esc(unit)}`;
-  if (k > 0) return `${k} แพ็ค`;
+  if (k > 0 && r > 0) return `${k} ${pu} ${r} ${esc(unit)}`;
+  if (k > 0) return `${k} ${pu}`;
   return `${r} ${esc(unit)}`;
 };
