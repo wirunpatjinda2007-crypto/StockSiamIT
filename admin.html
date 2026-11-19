@@ -5,18 +5,15 @@
 <title>SiamIT – แอดมิน</title>
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=Prompt:wght@500;600;700&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="style.css"></head><body>
-<!-- แถบหัว: โลโก้ + ชื่อแอป (แก้คำว่า SiamIT ตรงนี้) + ปุ่มออกจากระบบ -->
 <header><div class="brand"><img class="hlogo" src="logo.webp" alt="Siam IT Thailand"><h1>SiamIT<small id="who"></small></h1></div><button onclick="logout()">ออกจากระบบ</button></header>
 <main id="main"></main>
-<!-- เมนูล่าง: อยากเพิ่มแท็บ ให้เพิ่มปุ่ม data-t ตรงนี้ + ฟังก์ชัน render ใน admin.js + ไอคอนใน style.css -->
 <nav>
 <button data-t="short" class="on" onclick="go('short')">ขาดสต๊อก<i id="n" hidden></i></button>
 <button data-t="prod" onclick="go('prod')">สินค้า</button>
-<button data-t="task" onclick="go('task')">งาน</button>
 <button data-t="hist" onclick="go('hist')">ประวัติ</button>
+<button data-t="users" onclick="go('users')">ผู้ใช้</button>
 <button data-t="fb" onclick="go('fb')">ความเห็น<i id="fbn" hidden></i></button>
 </nav>
-<!-- หน้าต่างฟอร์มที่เด้งขึ้น (เนื้อหาใส่โดย admin.js) -->
 <dialog id="sheet"></dialog>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
 <script src="config.js"></script><script src="common.js"></script><script src="admin.js"></script>
