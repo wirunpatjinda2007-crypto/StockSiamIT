@@ -42,3 +42,12 @@ const fmtQ = p => {
   const s = +p.pack_size, n = +p.qty, k = Math.floor(n / s), r = +(n - k * s).toFixed(2);
   return `${k} แพ็ค${r ? ' + ' + r + ' ' + esc(p.unit) : ''} (= ${n} ${esc(p.unit)})`;
 };
+// แปลงจำนวนเป็น "X แพ็ค Y หน่วย" (เช่น 2 แพ็ค 3 ขวด)
+const fmtPack = (qty, pack_size, unit = '') => {
+  const s = +pack_size, n = +qty;
+  if (!s || s <= 0) return `${n} ${esc(unit)}`.trim();
+  const k = Math.floor(n / s), r = +(n - k * s).toFixed(2);
+  if (k > 0 && r > 0) return `${k} แพ็ค ${r} ${esc(unit)}`;
+  if (k > 0) return `${k} แพ็ค`;
+  return `${r} ${esc(unit)}`;
+};
