@@ -205,3 +205,18 @@ button.tag{border:0;cursor:pointer;line-height:1.5}
 .rtg.on{outline:2px solid currentColor;outline-offset:1px}
 .rtg:disabled{opacity:.45;cursor:default}
 .rlist{margin-top:10px;border-top:1px solid var(--line);padding-top:2px}
+/* การ์ดวิเคราะห์ความนิยมขนม */
+.rank-badge{display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;font:700 13px 'Prompt',sans-serif;flex:none}
+.rank-1{background:#fef08a;color:#854d0e;box-shadow:0 2px 6px rgba(234,179,8,.3)}
+.rank-2{background:#e2e8f0;color:#334155}
+.rank-3{background:#fed7aa;color:#9a3412}
+.rank-n{background:var(--bg);color:var(--mut)}
+.sn-sec{margin:18px 0 8px;display:flex;align-items:center;justify-content:space-between}
+.sn-sec h3{font-size:16px;font-weight:600;display:flex;align-items:center;gap:6px}
+.sn-tag{font-size:12px;padding:2px 8px;border-radius:99px;font-weight:500}
+.sn-tag.hot{background:var(--redbg);color:var(--red)}
+.sn-tag.cold{background:var(--accbg);color:var(--acc)}
+.sn-card{position:relative;overflow:hidden}
+.sn-card::after{content:'';position:absolute;top:0;left:0;bottom:0;width:4px}
+.sn-card.is-hot::after{background:linear-gradient(180deg,#ea580c,#dc2626)}
+.sn-card.is-cold::after{background:linear-gradient(180deg,#38bdf8,#64748b)}
