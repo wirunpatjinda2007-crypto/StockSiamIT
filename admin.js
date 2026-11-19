@@ -385,7 +385,7 @@ function openProd(id) {
   <div class="two"><label>จำนวนต่อ 1 หน่วยบรรจุ<input name="pack_size" type="number" step="any" min="0" inputmode="decimal" value="${p.pack_size || ''}" placeholder="เว้นว่างถ้าไม่นับรวม"></label>
   <label>หน่วยบรรจุภัณฑ์<select name="pack_unit_sel" onchange="$('#puo').hidden=this.value!=='__other'">
     ${PACK_UNITS.map(u => `<option ${pu === u ? 'selected' : ''}>${u}</option>`).join('')}
-    <option value="__other" ${otherPu ? 'selected' : ''}>อื่นๆ (พิมพ์เอง)</option>
+    <option value="__other" ${otherPu ? 'selected' : ''}>อื่นๆ</option>
   </select></label></div>
   <label id="puo" ${otherPu ? '' : 'hidden'}>ระบุชื่อหน่วยบรรจุภัณฑ์<input name="pack_unit_other" value="${otherPu ? esc(pu) : ''}" placeholder="เช่น แผง, ลัง, ถาด, โหล"></label></div>
   <label id="ms" ${S_ ? '' : 'hidden'}>สถานะปัจจุบัน<select name="status">${['ok', 'low', 'out'].map(s => `<option value="${s}" ${(p.status || 'ok') === s ? 'selected' : ''}>${STL[s]}</option>`).join('')}</select></label>
