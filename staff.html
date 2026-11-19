@@ -62,10 +62,11 @@ function card(p) {
   const head = `<div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${isSt(p) ? 'สถานะในระบบ: ' + STL[p.status || 'ok'] : `ในระบบ ${fmtQ(p)} · ขั้นต่ำ ${p.min_qty}`}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LVN[k]}</span></div></div>`;
   if (isSt(p)) return `<article class="card ${low ? 'lv-' + k : ''}">${head}<div class="segs">${['ok', 'low', 'out'].map(s => `<button type="button" class="seg g-${s} ${(p.status || 'ok') === s ? 'on' : ''}" onclick="setStatus('${p.id}','${s}')">${STL[s]}</button>`).join('')}</div></article>`;
   if (isPk(p)) {
+    const pu = esc(pkUnitOf(p));
     const s = +p.pack_size, n = +p.qty, fl = Math.floor(n / s);
     const a = dr[p.id] ?? fl, b = dr['l' + p.id] ?? +(n - fl * s).toFixed(2);
     return `<article class="card ${low ? 'lv-' + k : ''}">${head}
-    <div class="counter"><button type="button" class="step" onclick="adj('${p.id}',-1)" aria-label="ลดแพ็ค">−</button><input id="c${p.id}" type="number" min="0" step="1" inputmode="numeric" value="${a}" oninput="dr['${p.id}']=this.value"><button type="button" class="step" onclick="adj('${p.id}',1)" aria-label="เพิ่มแพ็ค">+</button><span class="mut">แพ็ค (แพ็คละ ${s} ${esc(p.unit)})</span></div>
+    <div class="counter"><button type="button" class="step" onclick="adj('${p.id}',-1)" aria-label="ลด${pu}">−</button><input id="c${p.id}" type="number" min="0" step="1" inputmode="numeric" value="${a}" oninput="dr['${p.id}']=this.value"><button type="button" class="step" onclick="adj('${p.id}',1)" aria-label="เพิ่ม${pu}">+</button><span class="mut">${pu} (${pu}ละ ${s} ${esc(p.unit)})</span></div>
     <div class="counter"><input id="l${p.id}" type="number" min="0" step="any" inputmode="decimal" value="${b}" oninput="dr['l${p.id}']=this.value"><span class="mut">${esc(p.unit)} เศษ</span><button class="btn" onclick="savePk('${p.id}')">บันทึกยอด</button></div></article>`;
   }
   const v = dr[p.id] ?? p.qty;
