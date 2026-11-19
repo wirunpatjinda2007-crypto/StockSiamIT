@@ -84,7 +84,7 @@ function detail(id) {
   const d = $('#sheet');
   const boxes = S_
     ? `<div><span class="mut">สถานะ</span><b class="v-${k}">${STL[p.status || 'ok']}</b></div><div><span class="mut">วิธีนับ</span><b>ตามสถานะ</b></div>`
-    : `<div><span class="mut">คงเหลือ</span><b class="v-${k}">${isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' แพ็ค' : p.qty + ' ' + esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div>`;
+    : `<div><span class="mut">คงเหลือ</span><b class="v-${k}">${isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' ' + pkUnitOf(p) : p.qty + ' ' + esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div>`;
   const msg = S_ ? (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'มีพอ' : 'ใกล้หมด')
     : (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'ปกติ · ' + r + '% ของขั้นต่ำ' : 'เหลือ ' + r + '% ของขั้นต่ำ');
   d.innerHTML = `<h2>${esc(p.name)}</h2>
@@ -162,13 +162,14 @@ function hDesc(x) {
   const u = esc(x.unit || '');
   const pr = P.find(p => p.id === x.product_id || p.name === x.product_name);
   const ps = +(x.pack_size || (pr && pr.pack_size) || 0);
+  const pu = (pr && pkUnitOf(pr)) || x.pack_unit || 'แพ็ค';
   if (x.action === 'qty') {
     const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
     let pkInfo = '';
     if (ps > 0) {
-      const bPk = fmtPack(b, ps, u);
-      const aPk = fmtPack(a, ps, u);
-      pkInfo = `<span class="mut" style="display:block;font-size:13px;margin-top:2px">📦 รวมเป็น <b>${bPk}</b> <span style="opacity:.8">(จาก ${aPk} · แพ็คละ ${ps} ${u})</span></span>`;
+      const bPk = fmtPack(b, ps, u, pu);
+      const aPk = fmtPack(a, ps, u, pu);
+      pkInfo = `<span class="mut" style="display:block;font-size:13px;margin-top:2px">📦 รวมเป็น <b>${bPk}</b> <span style="opacity:.8">(จาก ${aPk} · ${pu}ละ ${ps} ${u})</span></span>`;
     }
     return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>${pkInfo}`;
   }
@@ -176,7 +177,7 @@ function hDesc(x) {
   if (x.action === 'add') {
     let addPk = '';
     if (ps > 0 && x.new_value && x.track_mode !== 'status') {
-      addPk = ` · รวม ${fmtPack(+x.new_value, ps, u)}`;
+      addPk = ` · รวม ${fmtPack(+x.new_value, ps, u, pu)}`;
     }
     return 'เพิ่มสินค้าใหม่' + (x.new_value ? ' · เริ่มที่ ' + (x.track_mode === 'status' ? esc(STL[x.new_value] || x.new_value) : (+x.new_value) + ' ' + u + addPk) : '');
   }
@@ -341,7 +342,7 @@ function renderProd() {
   pkeys = [...new Set(P.map(catOf))].sort((a, b) => a === NOCAT ? 1 : b === NOCAT ? -1 : a.localeCompare(b, 'th'));
   if (pcat && !pkeys.includes(pcat)) pcat = '';
   const chips = `<div class="chips"><button class="chip ${pcat ? '' : 'on'}" onclick="setPcat(-1)">ทั้งหมด ${P.length}</button>${pkeys.map((k, i) => `<button class="chip ${pcat === k ? 'on' : ''}" onclick="setPcat(${i})">${esc(k)} ${P.filter(p => catOf(p) === k).length}</button>`).join('')}</div>`;
-  const card = p => `<article class="card" onclick="openProd('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${esc(catOf(p))} · ${isSt(p) ? 'นับตามสถานะ' : (isPk(p) ? `แพ็คละ ${p.pack_size} ${esc(p.unit)} · ` : '') + 'ขั้นต่ำ ' + p.min_qty}</p></div><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : (isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' แพ็ค' : p.qty + ' ' + esc(p.unit))}</span></div></div></article>`;
+  const card = p => `<article class="card" onclick="openProd('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${esc(catOf(p))} · ${isSt(p) ? 'นับตามสถานะ' : (isPk(p) ? `${pkUnitOf(p)}ละ ${p.pack_size} ${esc(p.unit)} · ` : '') + 'ขั้นต่ำ ' + p.min_qty}</p></div><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : (isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' ' + pkUnitOf(p) : p.qty + ' ' + esc(p.unit))}</span></div></div></article>`;
   const groups = pcat ? [pcat] : pkeys;
   $('#main').innerHTML = `<button class="btn add" onclick="openProd()">เพิ่มสินค้า</button>` + (P.length ? chips +
     groups.map(k => `<div class="sn-sec"><h3>${esc(k)}</h3></div>` + P.filter(p => catOf(p) === k).map(card).join('')).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
@@ -372,6 +373,8 @@ const modeUi = m => { $('#mq').hidden = m === 'status'; $('#ms').hidden = m !== 
 function openProd(id) {
   const p = P.find(x => x.id === id) || { name: '', unit: 'ชิ้น', qty: 0, min_qty: 0, track_mode: 'qty', status: 'ok' };
   const S_ = isSt(p), other = !!p.unit && !UNITS.includes(p.unit);
+  const pu = pkUnitOf(p);
+  const otherPu = !PACK_UNITS.includes(pu);
   sheet(`<h2>${id ? 'แก้ไขสินค้า' : 'เพิ่มสินค้า'}</h2>
   <label>ชื่อสินค้า<input name="name" required value="${esc(p.name)}"></label>
   <label>วิธีนับสินค้า<select name="track_mode" onchange="modeUi(this.value)">
@@ -379,18 +382,41 @@ function openProd(id) {
     <option value="status" ${S_ ? 'selected' : ''}>นับเป็นสถานะ (มีพอ / ใกล้หมด / หมด)</option></select></label>
   <div id="mq" ${S_ ? 'hidden' : ''}><div class="two"><label>คงเหลือ (นับเป็นชิ้น)<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
   <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div>
-  <label>ชิ้นต่อ 1 แพ็ค (เว้นว่างถ้าไม่นับเป็นแพ็ค)<input name="pack_size" type="number" step="any" min="0" inputmode="decimal" value="${p.pack_size || ''}"></label></div>
+  <div class="two"><label>จำนวนต่อ 1 หน่วยบรรจุ<input name="pack_size" type="number" step="any" min="0" inputmode="decimal" value="${p.pack_size || ''}" placeholder="เว้นว่างถ้าไม่นับรวม"></label>
+  <label>หน่วยบรรจุภัณฑ์<select name="pack_unit_sel" onchange="$('#puo').hidden=this.value!=='__other'">
+    ${PACK_UNITS.map(u => `<option ${pu === u ? 'selected' : ''}>${u}</option>`).join('')}
+    <option value="__other" ${otherPu ? 'selected' : ''}>อื่นๆ (พิมพ์เอง)</option>
+  </select></label></div>
+  <label id="puo" ${otherPu ? '' : 'hidden'}>ระบุชื่อหน่วยบรรจุภัณฑ์<input name="pack_unit_other" value="${otherPu ? esc(pu) : ''}" placeholder="เช่น แผง, ลัง, ถาด, โหล"></label></div>
   <label id="ms" ${S_ ? '' : 'hidden'}>สถานะปัจจุบัน<select name="status">${['ok', 'low', 'out'].map(s => `<option value="${s}" ${(p.status || 'ok') === s ? 'selected' : ''}>${STL[s]}</option>`).join('')}</select></label>
-  <label>หน่วย<select name="unit" onchange="$('#uo').hidden=this.value!=='__other'">${UNITS.map(u => `<option ${p.unit === u ? 'selected' : ''}>${u}</option>`).join('')}<option value="__other" ${other ? 'selected' : ''}>อื่นๆ</option></select></label>
-  <label id="uo" ${other ? '' : 'hidden'}>ระบุหน่วย<input name="unit_other" value="${other ? esc(p.unit) : ''}" placeholder="เช่น กล่อง, ลัง"></label>
+  <label>หน่วยของสินค้า (หน่วยย่อย)<select name="unit" onchange="$('#uo').hidden=this.value!=='__other'">${UNITS.map(u => `<option ${p.unit === u ? 'selected' : ''}>${u}</option>`).join('')}<option value="__other" ${other ? 'selected' : ''}>อื่นๆ</option></select></label>
+  <label id="uo" ${other ? '' : 'hidden'}>ระบุหน่วย<input name="unit_other" value="${other ? esc(p.unit) : ''}" placeholder="เช่น ขวด, ฟอง, กระป๋อง"></label>
   <label>หมวดหมู่<select name="category"><option value="">ไม่ระบุ</option>${[...new Set([...CATS, ...P.map(catOf).filter(k => k !== NOCAT)])].map(k => `<option value="${esc(k)}" ${k === (p.category || '') ? 'selected' : ''}>${esc(k)}</option>`).join('')}</select></label>
   ${id ? `<button type="button" class="link red" onclick="delProd('${id}')">ลบสินค้านี้</button>` : ''}`,
     async v => {
       v.unit = v.unit === '__other' ? ((v.unit_other || '').trim() || 'ชิ้น') : v.unit;
       delete v.unit_other;
       v.pack_size = v.track_mode === 'qty' && v.pack_size ? +v.pack_size : null;
-      if (v.track_mode === 'status') { delete v.qty; delete v.min_qty; } else { v.status = 'ok'; }
-      return ok(id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v));
+      const pUnit = v.pack_unit_sel === '__other' ? ((v.pack_unit_other || '').trim() || 'แพ็ค') : (v.pack_unit_sel || 'แพ็ค');
+      delete v.pack_unit_sel;
+      delete v.pack_unit_other;
+      if (v.pack_size) v.pack_unit = pUnit; else delete v.pack_unit;
+      if (v.track_mode === 'status') { delete v.qty; delete v.min_qty; delete v.pack_size; delete v.pack_unit; } else { v.status = 'ok'; }
+
+      let r = id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v);
+      if (r.error && String(r.error.message || '').includes('pack_unit')) {
+        const puVal = v.pack_unit;
+        delete v.pack_unit;
+        r = id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v);
+        if (!r.error && puVal) {
+          const savedId = id || (r.data && r.data[0] && r.data[0].id);
+          if (savedId) { try { localStorage.setItem('pu_' + savedId, puVal); } catch(e){} }
+        }
+      } else if (!r.error && (id || (r.data && r.data[0])) && v.pack_unit) {
+        const savedId = id || (r.data && r.data[0] && r.data[0].id);
+        if (savedId) { try { localStorage.setItem('pu_' + savedId, v.pack_unit); } catch(e){} }
+      }
+      return ok(r);
     });
 }
 async function delProd(id) { if (confirm('ลบสินค้านี้?') && ok(await sb.from('products').delete().eq('id', id))) { $('#sheet').close(); load(); } }
