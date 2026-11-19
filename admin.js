@@ -20,7 +20,7 @@ async function load() {
 // สลับแท็บ
 function go(t) {
   tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  if (t === 'hist') { H = null; RP = null; render(); loadHist().then(render); } else render();
+  if (t === 'hist') { H = null; RP = null; SN = null; render(); loadHist().then(render); } else render();
 }
 // สัดส่วนที่เหลือเทียบกับขั้นต่ำ (0 = หมด, 1 = ถึงขั้นต่ำ) ใช้จัดลำดับความเร่งด่วน
 // สินค้านับแบบสถานะ: หมด=0, ใกล้หมด=0.5, มีพอ=1
@@ -142,18 +142,22 @@ function renderShort() {
 // ===== แท็บ 'ประวัติ': ดูรายการเปลี่ยนแปลงสต๊อกทีละสัปดาห์ (สัปดาห์เริ่มวันจันทร์) =====
 // H = รายการประวัติของสัปดาห์ที่เลือก (null = กำลังโหลด) hw = 0 สัปดาห์นี้ / -1 สัปดาห์ที่แล้ว ...
 // hq = คำค้นหาชื่อสินค้า hk = ตัวกรองประเภท (all=ทั้งหมด, cnt=นับสต๊อก, mng=จัดการสินค้า)
-// hv = มุมมองในแท็บประวัติ (log = การเปลี่ยนแปลงรายสัปดาห์ / rep = รายงานสรุปอัตโนมัติ) RP = รายการรายงานสัปดาห์ (null = กำลังโหลด)
-let H = null, hw = 0, hq = '', hk = 'all', hv = 'log', RP = null;
+// hv = มุมมองในแท็บประวัติ (log = การเปลี่ยนแปลงรายสัปดาห์ / rep = รายงานสรุปอัตโนมัติ / snack = วิเคราะห์ความนิยม) RP = รายการรายงานสัปดาห์ SN = ข้อมูลวิเคราะห์ขนม
+let H = null, hw = 0, hq = '', hk = 'all', hv = 'log', RP = null, SN = null, snDays = 30, snCat = 'ขนม';
 const HK = { all: 'ทั้งหมด', cnt: 'นับสต๊อก', mng: 'จัดการสินค้า' };
 const HACT = { qty: 'ปรับยอด', status: 'เปลี่ยนสถานะ', add: 'เพิ่มสินค้า', edit: 'แก้ข้อมูล', delete: 'ลบสินค้า' };
 // วันจันทร์ 00:00 ของสัปดาห์ที่ off (0 = สัปดาห์นี้)
 const wStart = off => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7 + off * 7); return d; };
-// ดึงข้อมูลแท็บประวัติ: มุมมองรายงาน = ตาราง weekly_reports / มุมมองการเปลี่ยนแปลง = ตาราง stock_logs เฉพาะสัปดาห์ที่เลือก
+// ดึงข้อมูลแท็บประวัติ: มุมมองรายงาน = ตาราง weekly_reports / มุมมองวิเคราะห์ = ตาราง stock_logs 30 วัน / มุมมองการเปลี่ยนแปลง = stock_logs เฉพาะสัปดาห์
 async function loadHist() {
   if (hv === 'rep') {
     const q = await sb.from('weekly_reports').select('*').order('week_start', { ascending: false }).limit(52);
     if (q.error) { toast(q.error.message); RP = []; return; }
     RP = q.data || []; return;
+  }
+  if (hv === 'snack') {
+    await loadSnackInsights();
+    return;
   }
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
   const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).lt('created_at', e.toISOString()).order('created_at', { ascending: false }).limit(1000);
@@ -195,6 +199,7 @@ function hDesc(x) {
 function renderHist() {
   if (tab !== 'hist') return;
   if (hv === 'rep') return renderRep();
+  if (hv === 'snack') return renderSnack();
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
   const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
   const label = `${f(s)} – ${f(e)} ${e.toLocaleDateString('th-TH', { year: 'numeric' })}`;
@@ -220,8 +225,8 @@ function histList() {
 }
 // ===== รายงานสรุปรายสัปดาห์ (ระบบสร้างให้อัตโนมัติทุกเช้าวันจันทร์ด้วย pg_cron ดูไฟล์ weekly_report.sql) =====
 // ปุ่มสลับมุมมองด้านบนของแท็บประวัติ
-const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button></div>`;
-function setHv(v) { hv = v; H = null; RP = null; renderHist(); loadHist().then(render); }
+const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button><button class="chip ${hv === 'snack' ? 'on' : ''}" onclick="setHv('snack')">วิเคราะห์ความนิยม 🍿</button></div>`;
+function setHv(v) { hv = v; H = null; RP = null; SN = null; renderHist(); loadHist().then(render); }
 const LVC = { out: 'red', crit: 'org', low: 'amb', ok: 'grn' };
 // repSel = หมวดที่กดเปิดดูในแต่ละรายงาน (id รายงาน -> ok/low/crit/out) แตะซ้ำเพื่อปิด
 let repSel = {};
@@ -255,6 +260,139 @@ function renderRep() {
     ${bu.length ? `<p class="mut" style="margin-top:8px">ผู้ทำรายการ: ${bu.map(u => esc(u.name) + ' ' + u.n + ' ครั้ง').join(' · ')}</p>` : ''}
     <button class="link red" onclick="delReport('${x.id}')">ลบรายงานนี้</button></article>`;
   }).join('') : '<p class="mut" style="text-align:center;margin:20px 0">ยังไม่มีรายงาน ระบบจะสร้างให้อัตโนมัติทุกเช้าวันจันทร์ (หรือกดปุ่มด้านบนเพื่อสร้างทันที)</p>');
+}
+// ===== วิเคราะห์ความนิยมสินค้า/ขนม (ฮิต vs ค้างสต๊อก) =====
+async function loadSnackInsights() {
+  const s = new Date();
+  s.setDate(s.getDate() - snDays);
+  const r = await sb.from('stock_logs')
+    .select('*')
+    .gte('created_at', s.toISOString())
+    .order('created_at', { ascending: false })
+    .limit(3000);
+  if (r.error) { toast(r.error.message); SN = []; return; }
+  SN = r.data || [];
+}
+
+function setSnDays(d) { snDays = d; SN = null; renderHist(); loadHist().then(render); }
+function setSnCat(c) { snCat = c; renderHist(); }
+
+function renderSnack() {
+  const top = hvTabs();
+  if (SN === null) {
+    $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังวิเคราะห์ความนิยม...</p>';
+    return;
+  }
+
+  // ตัวเลือกหมวดหมู่ (ขนม, ของใช้, ของจิปาถะ, ทั้งหมด)
+  const catChoices = [...new Set(['ขนม', ...CATS, 'ทั้งหมด'])];
+  const catChips = `<div class="chips" style="margin-top:6px">${catChoices.map(c => `<button class="chip ${snCat === c ? 'on' : ''}" onclick="setSnCat('${esc(c)}')">${esc(c)}</button>`).join('')}</div>`;
+
+  // ตัวเลือกช่วงวัน (7, 14, 30 วัน)
+  const daysBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 2px 14px">
+    <span class="mut" style="font-size:13px">วิเคราะห์ย้อนหลัง:</span>
+    <div style="display:flex;gap:6px">
+      ${[7, 14, 30].map(d => `<button class="chip ${snDays === d ? 'on' : ''}" style="padding:4px 10px;font-size:12px" onclick="setSnDays(${d})">${d} วัน</button>`).join('')}
+    </div>
+  </div>`;
+
+  // กรองสินค้าตามหมวด
+  const list = P.filter(p => snCat === 'ทั้งหมด' || catOf(p) === snCat);
+  if (!list.length) {
+    $('#main').innerHTML = top + catChips + daysBar + `<article class="card"><p class="mut" style="text-align:center;margin:16px 0">ไม่พบสินค้าในหมวด “${esc(snCat)}”</p></article>`;
+    return;
+  }
+
+  // คำนวณยอดที่ถูกหยิบกิน/ใช้ และจำนวนวันที่นิ่ง
+  const items = list.map(p => {
+    const logs = SN.filter(l => l.product_id === p.id || l.product_name === p.name);
+    let consumed = 0;
+    logs.forEach(l => {
+      if (l.action === 'qty') {
+        const diff = (+l.old_value) - (+l.new_value);
+        if (diff > 0) consumed += diff;
+      } else if (l.action === 'status') {
+        if ((l.old_value === 'ok' && l.new_value !== 'ok') || (l.old_value === 'low' && l.new_value === 'out')) {
+          consumed += 1;
+        }
+      }
+    });
+    const lastLogTime = logs.length > 0 ? new Date(logs[0].created_at).getTime() : 0;
+    const daysInactive = lastLogTime > 0 ? Math.max(0, Math.floor((Date.now() - lastLogTime) / (1000 * 60 * 60 * 24))) : snDays;
+    return { ...p, consumed, daysInactive, logCount: logs.length };
+  });
+
+  // สินค้ายอดฮิต (เรียงตามยอดกิน/ใช้มากสุด)
+  const hot = items.filter(x => x.consumed > 0).sort((a, b) => b.consumed - a.consumed || b.logCount - a.logCount);
+
+  // สินค้าค้างสต๊อก (มีของเหลืออยู่ แต่คนไม่ค่อยกิน / นิ่งนานสุด)
+  const slow = items.filter(x => {
+    const hasStock = isSt(x) ? x.status !== 'out' : +x.qty > 0;
+    return hasStock && (x.consumed === 0 || x.daysInactive >= 5);
+  }).sort((a, b) => b.daysInactive - a.daysInactive || a.consumed - b.consumed);
+
+  const totalConsumed = items.reduce((s, x) => s + x.consumed, 0);
+  const topItem = hot.length ? hot[0].name : '-';
+
+  // แถบสรุปตัวเลข 3 กล่อง
+  const stats = `<div class="stats">
+    <div class="stat blue inert"><span class="sic">${IC.box}</span><b>${items.length}</b><span>ในหมวดนี้</span></div>
+    <div class="stat red inert"><span class="sic">${IC.warn}</span><b>${totalConsumed}</b><span>ยอดกิน/ใช้รวม</span></div>
+    <div class="stat grn inert"><span class="sic">${IC.ok}</span><b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(topItem)}</b><span>ฮิตอันดับ 1 🔥</span></div>
+  </div>`;
+
+  // HTML ส่วนของฮิต
+  const hotHtml = hot.length ? hot.map((x, idx) => {
+    const rankClass = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : 'rank-n';
+    const rankIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+    const avg = (x.consumed / snDays).toFixed(1);
+    const u = esc(x.unit || 'ชิ้น');
+    const isShort = stOf(x) !== 'ok';
+    const stockInfo = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${x.qty} / ขั้นต่ำ ${x.min_qty} ${u}`;
+    return `<article class="card sn-card is-hot">
+      <div class="row">
+        <div style="display:flex;align-items:center;gap:10px">
+          <span class="rank-badge ${rankClass}">${rankIcon}</span>
+          <div>
+            <h3>${esc(x.name)}</h3>
+            <p class="mut">${stockInfo}</p>
+          </div>
+        </div>
+        <div class="rt">
+          <span class="sn-tag hot">กินไป ${x.consumed} ${u}</span>
+        </div>
+      </div>
+      <p class="mut" style="font-size:13px;margin-top:6px">
+        เฉลี่ย ~${avg} ${u}/วัน ${isShort ? ' · <b class="v-out">ของใกล้หมด รีบเติม!</b>' : ' · <span style="color:var(--grn)">ออกไว แนะนำตุนเพิ่ม</span>'}
+      </p>
+      ${isShort ? `<button class="btn" style="margin-top:8px;padding:9px;font-size:14px" onclick="openTask('${x.id}')">สั่งงานเติมของด่วน</button>` : ''}
+    </article>`;
+  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ยังไม่พบรายการที่มีการหยิบกินในรอบ ${snDays} วันนี้</p></article>`;
+
+  // HTML ส่วนของค้างสต๊อก
+  const slowHtml = slow.length ? slow.map(x => {
+    const u = esc(x.unit || 'ชิ้น');
+    const stockInfo = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${x.qty} ${u}`;
+    const daysTxt = x.daysInactive >= snDays ? `${snDays}+ วัน` : `${x.daysInactive} วัน`;
+    return `<article class="card sn-card is-cold">
+      <div class="row">
+        <div>
+          <h3>${esc(x.name)}</h3>
+          <p class="mut">${stockInfo} · ${catOf(x)}</p>
+        </div>
+        <div class="rt">
+          <span class="sn-tag cold">ยอดนิ่ง ${daysTxt}</span>
+        </div>
+      </div>
+      <p class="mut" style="font-size:13px;margin-top:6px">
+        ❄️ คนกินน้อย (หยิบไปแค่ ${x.consumed} ${u}) · <b>ชะลอการสั่งซื้อ</b> หรือนำมาจัดโปร/ย้ายตำแหน่งวาง
+      </p>
+    </article>`;
+  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ทุกรายการมียอดการหยิบกินสม่ำเสมอ ไม่มีของค้างสต๊อก 👍</p></article>`;
+
+  $('#main').innerHTML = top + catChips + daysBar + stats +
+    `<div class="sn-sec"><h3>🔥 รายการยอดฮิต (คนกินเยอะ / แนะนำสั่งเพิ่ม)</h3><span class="mut" style="font-size:13px">${hot.length} รายการ</span></div>` + hotHtml +
+    `<div class="sn-sec" style="margin-top:22px"><h3>❄️ รายการค้างสต๊อก (คนไม่ค่อยกิน / ชะลอการสั่ง)</h3><span class="mut" style="font-size:13px">${slow.length} รายการ</span></div>` + slowHtml;
 }
 // แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
 function renderFb() {
