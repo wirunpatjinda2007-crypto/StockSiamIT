@@ -1,56 +1,41 @@
-// ตัวแปรเก็บข้อมูล: P=สินค้า S=ผู้ใช้ (พนักงานและแอดมิน) T=งาน F=ความเห็น tab=แท็บที่เปิดอยู่
-let P = [], S = [], T = [], F = [], tab = 'short';
+// P=สินค้า S=ผู้ใช้ F=ความเห็น tab=แท็บที่เปิดอยู่
+let P = [], S = [], F = [], tab = 'short';
 (async () => {
   const me = await guard('admin'); if (!me) return;
   $('#who').textContent = 'สวัสดี ' + me.name;
   await load();
   sb.channel('live').on('postgres_changes', { event: '*', schema: 'public' }, load).subscribe();
 })();
-// โหลดข้อมูลทั้งหมดจาก Supabase แล้ววาดหน้าใหม่ (เรียกซ้ำอัตโนมัติเมื่อข้อมูลเปลี่ยน)
 async function load() {
-  const [a, b, c, d] = await Promise.all([
+  const [a, b, d] = await Promise.all([
     sb.from('products').select('*').order('name'),
     sb.from('profiles').select('*').order('name'),
-    sb.from('tasks').select('*').order('created_at', { ascending: false }),
     sb.from('feedback').select('*').order('created_at', { ascending: false })]);
-  P = a.data || []; S = b.data || []; T = c.data || []; F = d.data || [];
+  P = a.data || []; S = b.data || []; F = d.data || [];
   if (tab === 'hist') await loadHist();
   render();
 }
-// สลับแท็บ
 function go(t) {
   tab = t; document.querySelectorAll('nav button').forEach(b => b.classList.toggle('on', b.dataset.t === t));
-  if (t === 'hist') { H = null; RP = null; SN = null; render(); loadHist().then(render); } else render();
+  if (t === 'hist') { H = null; RP = null; SN = null; SF = null; render(); loadHist().then(render); } else render();
 }
-// สัดส่วนที่เหลือเทียบกับขั้นต่ำ (0 = หมด, 1 = ถึงขั้นต่ำ) ใช้จัดลำดับความเร่งด่วน
-// สินค้านับแบบสถานะ: หมด=0, ใกล้หมด=0.5, มีพอ=1
 const pct = p => isSt(p) ? ({ out: 0, low: 0.5, ok: 1 }[p.status] ?? 1) : (+p.min_qty > 0 ? +p.qty / +p.min_qty : 0);
-// รายการที่ต้องเติม = สถานะไม่ใช่ ok เรียงจากเหลือน้อยที่สุดขึ้นก่อน
 const low = () => P.filter(p => stOf(p) !== 'ok').sort((x, y) => pct(x) - pct(y) || x.qty - y.qty);
-// แปลง id ผู้ใช้เป็นชื่อ (อ่านจากคอลัมน์ name ในตาราง profiles)
-// ชื่อพนักงาน/แอดมินที่แสดงในแอปมาจากตรงนี้ - แก้ชื่อได้ที่ Supabase (ดูท้ายไฟล์ schema.sql)
 const who = id => (S.find(x => x.id === id) || {}).name || '-';
-// วาดหน้าตามแท็บ + อัปเดตเลขแจ้งบนเมนู
 function render() {
   const n = low().length; $('#n').hidden = !n; $('#n').textContent = n;
   const u = F.filter(x => x.status === 'todo').length; $('#fbn').hidden = !u; $('#fbn').textContent = u;
-  ({ short: renderShort, prod: renderProd, task: renderTask, hist: renderHist, fb: renderFb })[tab]();
+  ({ short: renderShort, prod: renderProd, hist: renderHist, fb: renderFb, users: renderUsers })[tab]();
 }
-// ระดับความขาดของสินค้า: out=หมด, crit=เหลือน้อยมาก (<=25% ของขั้นต่ำ), low=ใกล้หมด (คำนวณใน stOf ที่ common.js)
 const lvl = p => stOf(p);
-// สถานะรวม: ok (ปกติ) / low / crit / out
 const st = p => stOf(p);
 const LV = { out: 'หมด', crit: 'เหลือน้อยมาก', low: 'ใกล้หมด', ok: 'ปกติ' };
 const VIEWS = { low: 'ต้องเติม', all: 'สินค้าทั้งหมด', ok: 'ปกติ' };
-// ตัวเลือกหมวดหมู่ในฟอร์มเพิ่ม/แก้สินค้า - อยากเพิ่มหมวดใหม่ ให้เพิ่มชื่อในลิสต์นี้
-// (หมวดที่เคยใส่ไว้ในสินค้าแล้วจะขึ้นในตัวเลือกให้เองด้วย)
-const CATS = ['ขนม', 'ของกิน', 'เครื่องดื่ม', 'ของใช้', 'ของจิปาถะ' ];
+// หมวดหมู่ในฟอร์มสินค้า: อยากเพิ่มหมวดใหม่ ให้เพิ่มชื่อในลิสต์นี้
+const CATS = ['ขนม', 'ของกิน', 'เครื่องดื่ม', 'ของใช้', 'ของจิปาถะ'];
 const NOCAT = 'ไม่ระบุหมวด';
 const catOf = p => String(p.category || '').trim() || NOCAT;
-// ข้อความบรรทัดรองของสินค้า: นับจำนวน = เหลือ x จากขั้นต่ำ y / นับสถานะ = สถานะ: ...
-const sub = p => isSt(p) ? 'สถานะ: ' + STL[p.status || 'ok'] : `เหลือ ${p.qty} จากขั้นต่ำ ${p.min_qty} ${esc(p.unit)}`;
-// view = มุมมองรายการ (low=ต้องเติม, all=ทั้งหมด, ok=ปกติ), fl = ระดับที่กรอง, cat = หมวดที่กรอง ('' = ทุกหมวด)
-// catList = รายชื่อหมวดที่แสดงอยู่ (ใช้อ้างด้วยเลขลำดับ)
+const sub = p => isSt(p) ? 'สถานะ: ' + STL[p.status || 'ok'] : `เหลือ ${fmtQ(p)} · ขั้นต่ำ ${p.min_qty} ${esc(p.unit)}`;
 let view = 'low', fl = '', cat = '', catList = [];
 const scrollList = () => { const e = $('#lst'); if (e) e.scrollIntoView({ behavior: 'smooth' }); };
 const setView = v => { view = v; fl = ''; render(); scrollList(); };
@@ -64,7 +49,6 @@ const IC = {
   list: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
   user: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>'
 };
-// กราฟโดนัท: แต่ละส่วนกดเพื่อกรองรายการด้านล่าง (ส่วน 'ปกติ' = ดูเฉพาะของปกติ)
 function donut(c, total) {
   const R = 54, C = 2 * Math.PI * R; let off = 0;
   const on = k => k === 'ok' ? view === 'ok' : view === 'low' && fl === k;
@@ -76,8 +60,6 @@ function donut(c, total) {
   const f = (fl && view === 'low') || view === 'ok';
   return `<svg class="donut ${f ? 'f' : ''}" viewBox="0 0 140 140" role="img" aria-label="สัดส่วนสถานะสต๊อก"><g transform="rotate(-90 70 70)">${arcs}</g><text class="dpct" x="70" y="72" text-anchor="middle">${Math.round(c.ok / total * 100)}%</text><text class="dsub" x="70" y="90" text-anchor="middle">ปกติ</text></svg>`;
 }
-// แดชบอร์ดหน้าขาดสต๊อก: การ์ดตัวเลข 3 ใบ + โดนัทสถานะ + สรุปตามหมวดหมู่ (ทุกส่วนกดได้)
-// เมื่อกดเลือกหมวด ตัวเลขและโดนัทจะนับเฉพาะหมวดนั้น (การ์ดหมวดยังแสดงครบทุกหมวดเพื่อสลับได้)
 function dash() {
   if (!P.length) return '<p class="mut">ยังไม่มีสินค้า ไปที่แท็บ “สินค้า” เพื่อเพิ่ม</p>';
   const sc = cat ? P.filter(p => catOf(p) === cat) : P, total = sc.length;
@@ -94,29 +76,26 @@ function dash() {
     return `<button class="ccat ${cat === k ? 'on' : ''}" onclick="setCat(${i})"><div class="top"><span>${esc(k)}</span><em>${o.ok}/${o.n} (${pc}%)${bad ? `<i>ต้องเติม ${bad}</i>` : ''}</em></div><div class="ctr ${bad ? 'bad' : ''}"><i style="width:${pc}%"></i></div></button>`; }).join('')}<p class="mut hint">แตะหมวดเพื่อดูเฉพาะหมวดนั้น (แตะซ้ำเพื่อดูทุกหมวด)</p></section>` : '';
   return stats + donutCard + catCard;
 }
-// หน้าต่างรายละเอียดสินค้า (เด้งขึ้นเมื่อกดการ์ดสินค้า)
 function detail(id) {
   const p = P.find(x => x.id === id); if (!p) return;
   const S_ = isSt(p), k = st(p), mn = +p.min_qty;
   const r = S_ ? Math.round(pct(p) * 100) : (mn > 0 ? Math.round(+p.qty / mn * 100) : (+p.qty > 0 ? 100 : 0));
-  const open = T.some(t => t.product_id === id && t.status === 'todo');
   const need = S_ ? 0 : +(mn - +p.qty).toFixed(2);
   const d = $('#sheet');
   const boxes = S_
     ? `<div><span class="mut">สถานะ</span><b class="v-${k}">${STL[p.status || 'ok']}</b></div><div><span class="mut">วิธีนับ</span><b>ตามสถานะ</b></div>`
-    : `<div><span class="mut">คงเหลือ</span><b class="v-${k}">${p.qty} ${esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div>`;
+    : `<div><span class="mut">คงเหลือ</span><b class="v-${k}">${isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' แพ็ค' : p.qty + ' ' + esc(p.unit)}</b></div><div><span class="mut">ขั้นต่ำที่ต้องมี</span><b>${p.min_qty} ${esc(p.unit)}</b></div>`;
   const msg = S_ ? (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'มีพอ' : 'ใกล้หมด')
     : (k === 'out' ? 'หมดแล้ว' : k === 'ok' ? 'ปกติ · ' + r + '% ของขั้นต่ำ' : 'เหลือ ' + r + '% ของขั้นต่ำ');
   d.innerHTML = `<h2>${esc(p.name)}</h2>
   <div class="two dstat">${boxes}</div>
   <div class="ctrack big"><i class="s-${k}" style="width:${Math.max(0, Math.min(100, r))}%"></i></div>
-  <p class="mut" style="margin:8px 0 4px"><b class="v-${k}">${msg}</b>${need > 0 ? ' · เติมอย่างน้อย ' + need + ' ' + esc(p.unit) + ' จึงจะถึงขั้นต่ำ' : ''}${catOf(p) !== NOCAT ? ' · หมวด ' + esc(catOf(p)) : ''}</p>
-  ${open ? '<p class="mut">มีงานเติมของที่ยังไม่เสร็จ</p>' : ''}
+  <p class="mut" style="margin:8px 0 4px"><b class="v-${k}">${msg}</b>${need > 0 ? ' · ต้องเติมอย่างน้อย ' + need + ' ' + esc(p.unit) : ''}${catOf(p) !== NOCAT ? ' · หมวด ' + esc(catOf(p)) : ''}</p>
+  ${isPk(p) ? `<p class="mut">${fmtQ(p)}</p>` : ''}
   <div class="acts" style="margin-top:14px"><button type="button" class="btn ghost" onclick="$('#sheet').close()">ปิด</button>
-  ${k === 'ok' || open ? `<button type="button" class="btn" onclick="$('#sheet').close();openProd('${id}')">แก้ไขสินค้า</button>` : `<button type="button" class="btn" onclick="$('#sheet').close();openTask('${id}')">สั่งงานเติมของ</button>`}</div>`;
+  <button type="button" class="btn" onclick="$('#sheet').close();openProd('${id}')">แก้ไขสินค้า</button></div>`;
   d.showModal();
 }
-// แท็บ 'ขาดสต๊อก' (หน้าแรกของแอดมิน): แดชบอร์ด + รายการสินค้าตามตัวกรอง (ค่าเริ่มต้น = ที่ต้องเติม เรียงตามความเร่งด่วน)
 function renderShort() {
   if (cat && !P.some(p => catOf(p) === cat)) cat = '';
   const sc = cat ? P.filter(p => catOf(p) === cat) : P;
@@ -134,39 +113,34 @@ function renderShort() {
       const cn = catOf(p) !== NOCAT ? ' · ' + esc(catOf(p)) : '';
       if (!isLow(p)) { const w = isSt(p) ? 100 : (+p.min_qty > 0 ? Math.min(100, Math.round(+p.qty / +p.min_qty * 100)) : 100);
         return `<article class="card tap okc lv-ok" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag grn">ปกติ</span></div></div><div class="bar"><i style="width:${w}%"></i></div></article>`; }
-      const k = st(p), r = pct(p), open = T.some(t => t.product_id === p.id && t.status === 'todo');
-      return `<article class="card tap lv-${k}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LV[k]}</span></div></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div>` +
-        (open ? '<p class="mut" style="margin-top:8px">มีงานเติมของที่ยังไม่เสร็จ</p>' : `<button class="btn" onclick="event.stopPropagation();openTask('${p.id}')">สั่งงานเติมของ</button>`) + '</article>';
+      const k = st(p), r = pct(p);
+      return `<article class="card tap lv-${k}" onclick="detail('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${sub(p)}${cn}</p></div><div class="rt"><span class="tag ${TAGC[k]}">${LV[k]}</span></div></div><div class="bar"><i style="width:${Math.min(100, Math.round(r * 100))}%"></i></div></article>`;
     }).join('');
 }
-// ===== แท็บ 'ประวัติ': ดูรายการเปลี่ยนแปลงสต๊อกทีละสัปดาห์ (สัปดาห์เริ่มวันจันทร์) =====
-// H = รายการประวัติของสัปดาห์ที่เลือก (null = กำลังโหลด) hw = 0 สัปดาห์นี้ / -1 สัปดาห์ที่แล้ว ...
-// hq = คำค้นหาชื่อสินค้า hk = ตัวกรองประเภท (all=ทั้งหมด, cnt=นับสต๊อก, mng=จัดการสินค้า)
-// hv = มุมมองในแท็บประวัติ (log = การเปลี่ยนแปลงรายสัปดาห์ / rep = รายงานสรุปอัตโนมัติ / snack = วิเคราะห์ความนิยม) RP = รายการรายงานสัปดาห์ SN = ข้อมูลวิเคราะห์ขนม
-let H = null, hw = 0, hq = '', hk = 'all', hv = 'log', RP = null, SN = null, snDays = 30, snCat = 'ขนม';
+// ===== แท็บประวัติ =====
+let H = null, hw = 0, hq = '', hk = 'all', hv = 'log', RP = null, SN = null, SF = null, snDays = 30, snCat = 'ขนม', sfDays = 7, sfUser = '';
 const HK = { all: 'ทั้งหมด', cnt: 'นับสต๊อก', mng: 'จัดการสินค้า' };
 const HACT = { qty: 'ปรับยอด', status: 'เปลี่ยนสถานะ', add: 'เพิ่มสินค้า', edit: 'แก้ข้อมูล', delete: 'ลบสินค้า' };
-// วันจันทร์ 00:00 ของสัปดาห์ที่ off (0 = สัปดาห์นี้)
 const wStart = off => { const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (d.getDay() + 6) % 7 + off * 7); return d; };
-// ดึงข้อมูลแท็บประวัติ: มุมมองรายงาน = ตาราง weekly_reports / มุมมองวิเคราะห์ = ตาราง stock_logs 30 วัน / มุมมองการเปลี่ยนแปลง = stock_logs เฉพาะสัปดาห์
 async function loadHist() {
   if (hv === 'rep') {
     const q = await sb.from('weekly_reports').select('*').order('week_start', { ascending: false }).limit(52);
     if (q.error) { toast(q.error.message); RP = []; return; }
     RP = q.data || []; return;
   }
-  if (hv === 'snack') {
-    await loadSnackInsights();
-    return;
+  if (hv === 'snack') { await loadSnackInsights(); return; }
+  if (hv === 'staff') {
+    const s = new Date(); s.setDate(s.getDate() - 30);
+    const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).order('created_at', { ascending: false }).limit(3000);
+    if (r.error) { toast(r.error.message); SF = []; return; }
+    SF = r.data || []; return;
   }
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
   const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).lt('created_at', e.toISOString()).order('created_at', { ascending: false }).limit(1000);
   if (r.error) { toast(r.error.message); H = []; return; }
   H = r.data || [];
 }
-// เลื่อนสัปดาห์ (-1 = ก่อนหน้า, +1 = ถัดไป, ไม่เกินสัปดาห์นี้)
 function hwk(n) { hw = Math.min(0, hw + n); H = null; renderHist(); loadHist().then(render); }
-// ลบประวัติทั้งหมดของสัปดาห์ที่เลือก (ลบเฉพาะตาราง stock_logs ไม่กระทบสินค้า/ยอดสต๊อก และไม่กระทบรายงานสัปดาห์ที่สร้างไว้แล้ว)
 async function delWeekLogs() {
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 7);
   const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
@@ -175,7 +149,6 @@ async function delWeekLogs() {
   if (!ok(await sb.from('stock_logs').delete().gte('created_at', s.toISOString()).lt('created_at', e.toISOString()))) return;
   toast('ลบประวัติสัปดาห์นี้แล้ว'); H = null; await loadHist(); render();
 }
-// สร้าง/อัปเดตรายงานของ "สัปดาห์ที่เลือกอยู่" (ย้อนหลังได้) แล้วพาไปดูที่มุมมองรายงานสัปดาห์
 async function genWeekReport() {
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
   const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
@@ -185,21 +158,26 @@ async function genWeekReport() {
   toast('สร้างรายงานแล้ว'); hv = 'rep'; H = null; RP = null; renderHist(); await loadHist(); render();
 }
 const stTxt = v => `<b class="v-${esc(v)}">${esc(STL[v] || v)}</b>`;
-// คำอธิบายการเปลี่ยนแปลงของแต่ละรายการ
 function hDesc(x) {
   const u = esc(x.unit || '');
   if (x.action === 'qty') { const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
     return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>`; }
   if (x.action === 'status') return `${stTxt(x.old_value)} → ${stTxt(x.new_value)}`;
   if (x.action === 'add') return 'เพิ่มสินค้าใหม่' + (x.new_value ? ' · เริ่มที่ ' + (x.track_mode === 'status' ? esc(STL[x.new_value] || x.new_value) : (+x.new_value) + ' ' + u) : '');
-  if (x.action === 'edit') return 'แก้ไขข้อมูลสินค้า (ชื่อ / ขั้นต่ำ / หน่วย / หมวด / วิธีนับ)';
+  if (x.action === 'edit') return x.detail ? esc(x.detail).replace(/\n/g, '<br>') : 'แก้ไขข้อมูลสินค้า';
   return 'ลบสินค้าออกจากระบบ';
 }
-// วาดหน้าประวัติ: ตัวเลื่อนสัปดาห์ + สรุป + ค้นหา/กรอง + รายการ
+// จัดกลุ่มรายการตามวัน (showWho = แสดงชื่อผู้ทำรายการ)
+function dayGroups(L, showWho) {
+  const days = {};
+  L.forEach(x => { const k = new Date(x.created_at).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' }); (days[k] = days[k] || []).push(x); });
+  return Object.keys(days).map(k => `<section class="card hday"><h3>${k} · ${days[k].length} รายการ</h3>${days[k].map(x => `<div class="hrow"><i class="hdot a-${esc(x.action)}"></i><div class="hbody"><div class="row"><h4>${esc(x.product_name)}</h4><span class="mut">${new Date(x.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span></div><p class="hd">${hDesc(x)}</p><p class="mut">${esc(HACT[x.action] || x.action)}${showWho ? ' · โดย ' + esc(who(x.user_id)) : ''}</p></div></div>`).join('')}</section>`).join('');
+}
 function renderHist() {
   if (tab !== 'hist') return;
   if (hv === 'rep') return renderRep();
   if (hv === 'snack') return renderSnack();
+  if (hv === 'staff') return renderStaffHist();
   const s = wStart(hw), e = new Date(s); e.setDate(e.getDate() + 6);
   const f = d => d.toLocaleDateString('th-TH', { day: 'numeric', month: 'short' });
   const label = `${f(s)} – ${f(e)} ${e.toLocaleDateString('th-TH', { year: 'numeric' })}`;
@@ -209,40 +187,51 @@ function renderHist() {
   const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
   const stats = `<div class="stats">${box(IC.list, H.length, 'รายการ')}${box(IC.box, new Set(H.map(x => x.product_name)).size, 'สินค้า')}${box(IC.user, new Set(H.map(x => x.user_id).filter(Boolean)).size, 'ผู้ทำรายการ')}</div>`;
   const chips = `<div class="chips">${Object.keys(HK).map(k => `<button class="chip ${hk === k ? 'on' : ''}" onclick="hk='${k}';renderHist()">${HK[k]}</button>`).join('')}</div>`;
-  $('#main').innerHTML = hvTabs() + wk + `<button class="btn ghost add" onclick="genWeekReport()">สร้างรายการของสัปดาห์นี้</button>` + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
+  $('#main').innerHTML = hvTabs() + wk + `<button class="btn ghost add" onclick="genWeekReport()">สร้างรายงานของสัปดาห์นี้</button>` + stats + `<div class="tools"><input type="search" placeholder="ค้นหาชื่อสินค้า" value="${esc(hq)}" oninput="hq=this.value;histList()"></div>` + chips + '<div id="hl"></div>'
     + (H.length ? `<button class="link red" style="display:block;margin:6px auto 0" onclick="delWeekLogs()">ลบประวัติสัปดาห์นี้ (${H.length} รายการ)</button>` : '');
   histList();
 }
-// วาดเฉพาะรายการประวัติ (ใช้ตอนพิมพ์ค้นหา จะได้ไม่เสียโฟกัสช่องค้นหา) จัดกลุ่มตามวัน
 function histList() {
   const el = $('#hl'); if (!el) return;
   const s = hq.trim().toLowerCase();
   const L = H.filter(x => (hk === 'all' || (hk === 'cnt' ? ['qty', 'status'].includes(x.action) : ['add', 'edit', 'delete'].includes(x.action))) && (!s || String(x.product_name || '').toLowerCase().includes(s)));
   if (!L.length) { el.innerHTML = `<p class="mut" style="text-align:center;margin:20px 0">${H.length ? 'ไม่พบรายการที่ตรงกับตัวกรอง' : 'ยังไม่มีรายการในสัปดาห์นี้'}</p>`; return; }
-  const days = {};
-  L.forEach(x => { const k = new Date(x.created_at).toLocaleDateString('th-TH', { weekday: 'long', day: 'numeric', month: 'short' }); (days[k] = days[k] || []).push(x); });
-  el.innerHTML = Object.keys(days).map(k => `<section class="card hday"><h3>${k} · ${days[k].length} รายการ</h3>${days[k].map(x => `<div class="hrow"><i class="hdot a-${esc(x.action)}"></i><div class="hbody"><div class="row"><h4>${esc(x.product_name)}</h4><span class="mut">${new Date(x.created_at).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })} น.</span></div><p class="hd">${hDesc(x)}</p><p class="mut">${esc(HACT[x.action] || x.action)} · โดย ${esc(who(x.user_id))}</p></div></div>`).join('')}</section>`).join('');
+  el.innerHTML = dayGroups(L, true);
 }
-// ===== รายงานสรุปรายสัปดาห์ (ระบบสร้างให้อัตโนมัติทุกเช้าวันจันทร์ด้วย pg_cron ดูไฟล์ weekly_report.sql) =====
-// ปุ่มสลับมุมมองด้านบนของแท็บประวัติ
-const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button><button class="chip ${hv === 'snack' ? 'on' : ''}" onclick="setHv('snack')">วิเคราะห์ความนิยม 🍿</button></div>`;
-function setHv(v) { hv = v; H = null; RP = null; SN = null; renderHist(); loadHist().then(render); }
+const hvTabs = () => `<div class="chips"><button class="chip ${hv === 'log' ? 'on' : ''}" onclick="setHv('log')">การเปลี่ยนแปลง</button><button class="chip ${hv === 'staff' ? 'on' : ''}" onclick="setHv('staff')">ประวัติพนักงาน</button><button class="chip ${hv === 'rep' ? 'on' : ''}" onclick="setHv('rep')">รายงานสัปดาห์</button><button class="chip ${hv === 'snack' ? 'on' : ''}" onclick="setHv('snack')">วิเคราะห์ความนิยม 🍿</button></div>`;
+function setHv(v) { hv = v; H = null; RP = null; SN = null; SF = null; renderHist(); loadHist().then(render); }
+// ----- ประวัติการทำงานของพนักงานแต่ละคน -----
+function setSf(k, v) { if (k === 'd') sfDays = v; else sfUser = v; renderHist(); }
+function renderStaffHist() {
+  const top = hvTabs();
+  if (SF === null) { $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
+  const cut = Date.now() - sfDays * 864e5, L = SF.filter(x => Date.parse(x.created_at) >= cut);
+  const cnt = {}; L.forEach(x => { cnt[x.user_id] = (cnt[x.user_id] || 0) + 1; });
+  const users = S.slice().sort((a, b) => (cnt[b.id] || 0) - (cnt[a.id] || 0) || String(a.name).localeCompare(String(b.name), 'th'));
+  if (!users.some(u => u.id === sfUser)) sfUser = users.length ? users[0].id : '';
+  const mine = L.filter(x => x.user_id === sfUser);
+  const last = mine.length ? new Date(mine[0].created_at).toLocaleString('th-TH', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) + ' น.' : '-';
+  const days = `<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 2px 12px"><span class="mut" style="font-size:13px">ย้อนหลัง:</span><div style="display:flex;gap:6px">${[7, 14, 30].map(d => `<button class="chip ${sfDays === d ? 'on' : ''}" style="padding:4px 10px;font-size:12px" onclick="setSf('d',${d})">${d} วัน</button>`).join('')}</div></div>`;
+  const chips = `<div class="chips">${users.map(u => `<button class="chip ${sfUser === u.id ? 'on' : ''}" onclick="setSf('u','${u.id}')">${esc(u.name)} ${cnt[u.id] || 0}</button>`).join('')}</div>`;
+  const box = (ic, n, t) => `<div class="stat blue inert"><span class="sic">${ic}</span><b>${n}</b><span>${t}</span></div>`;
+  const dayN = new Set(mine.map(x => new Date(x.created_at).toDateString())).size;
+  const stats = `<div class="stats">${box(IC.list, mine.length, 'รายการ')}${box(IC.box, new Set(mine.map(x => x.product_name)).size, 'สินค้า')}${box(IC.ok, dayN, 'วันที่ทำงาน')}</div>`;
+  $('#main').innerHTML = top + days + chips + stats + `<p class="mut" style="margin:0 4px 12px">ทำรายการล่าสุด: ${last}</p>` +
+    (mine.length ? dayGroups(mine, false) : '<p class="mut" style="text-align:center;margin:20px 0">ไม่มีรายการของคนนี้ในช่วงที่เลือก</p>');
+}
+// ----- รายงานสัปดาห์ -----
 const LVC = { out: 'red', crit: 'org', low: 'amb', ok: 'grn' };
-// repSel = หมวดที่กดเปิดดูในแต่ละรายงาน (id รายงาน -> ok/low/crit/out) แตะซ้ำเพื่อปิด
 let repSel = {};
 function repPick(id, k) { repSel[id] = repSel[id] === k ? '' : k; renderRep(); }
-// กดสร้างรายงานของสัปดาห์นี้ทันที (ไว้ทดสอบ/ดูก่อนถึงวันจันทร์) - เรียกฟังก์ชัน generate_weekly_report ในฐานข้อมูล
 async function genReport() {
   if (!ok(await sb.rpc('generate_weekly_report', { p_which: 'this' }))) return;
   toast('สร้างรายงานแล้ว'); RP = null; await loadHist(); render();
 }
-// ลบรายงานสัปดาห์ 1 ฉบับ
 async function delReport(id) {
   if (!confirm('ลบรายงานสัปดาห์นี้? ลบแล้วกู้คืนไม่ได้')) return;
   if (!ok(await sb.from('weekly_reports').delete().eq('id', id))) return;
   toast('ลบรายงานแล้ว'); RP = null; await loadHist(); render();
 }
-// วาดหน้ารายงานสัปดาห์: การ์ดต่อสัปดาห์ (ใหม่สุดอยู่บน) มีสรุปจำนวนตามระดับ (แตะป้ายเพื่อดูรายการ) + ผู้นับสต๊อก
 function renderRep() {
   const top = hvTabs() + `<button class="btn ghost add" onclick="genReport()">สร้างรายงานสัปดาห์นี้ตอนนี้</button>`;
   if (RP === null) { $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังโหลด...</p>'; return; }
@@ -261,164 +250,109 @@ function renderRep() {
     <button class="link red" onclick="delReport('${x.id}')">ลบรายงานนี้</button></article>`;
   }).join('') : '<p class="mut" style="text-align:center;margin:20px 0">ยังไม่มีรายงาน ระบบจะสร้างให้อัตโนมัติทุกเช้าวันจันทร์ (หรือกดปุ่มด้านบนเพื่อสร้างทันที)</p>');
 }
-// ===== วิเคราะห์ความนิยมสินค้า/ขนม (ฮิต vs ค้างสต๊อก) =====
+// ----- วิเคราะห์ความนิยม: อันดับจาก "จำนวนครั้งที่ลด + หมด" เทียบกับช่วงก่อนหน้า (▲▼ NEW) -----
 async function loadSnackInsights() {
-  const s = new Date();
-  s.setDate(s.getDate() - snDays);
-  const r = await sb.from('stock_logs')
-    .select('*')
-    .gte('created_at', s.toISOString())
-    .order('created_at', { ascending: false })
-    .limit(3000);
+  const s = new Date(); s.setDate(s.getDate() - snDays * 2);
+  const r = await sb.from('stock_logs').select('*').gte('created_at', s.toISOString()).order('created_at', { ascending: false }).limit(5000);
   if (r.error) { toast(r.error.message); SN = []; return; }
   SN = r.data || [];
 }
-
 function setSnDays(d) { snDays = d; SN = null; renderHist(); loadHist().then(render); }
 function setSnCat(c) { snCat = c; renderHist(); }
-
-function renderSnack() {
-  const top = hvTabs();
-  if (SN === null) {
-    $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังวิเคราะห์ความนิยม...</p>';
-    return;
-  }
-
-  // ตัวเลือกหมวดหมู่ (ขนม, ของใช้, ของจิปาถะ, ทั้งหมด)
-  const catChoices = [...new Set(['ขนม', ...CATS, 'ทั้งหมด'])];
-  const catChips = `<div class="chips" style="margin-top:6px">${catChoices.map(c => `<button class="chip ${snCat === c ? 'on' : ''}" onclick="setSnCat('${esc(c)}')">${esc(c)}</button>`).join('')}</div>`;
-
-  // ตัวเลือกช่วงวัน (7, 14, 30 วัน)
-  const daysBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 2px 14px">
-    <span class="mut" style="font-size:13px">วิเคราะห์ย้อนหลัง:</span>
-    <div style="display:flex;gap:6px">
-      ${[7, 14, 30].map(d => `<button class="chip ${snDays === d ? 'on' : ''}" style="padding:4px 10px;font-size:12px" onclick="setSnDays(${d})">${d} วัน</button>`).join('')}
-    </div>
-  </div>`;
-
-  // กรองสินค้าตามหมวด
-  const list = P.filter(p => snCat === 'ทั้งหมด' || catOf(p) === snCat);
-  if (!list.length) {
-    $('#main').innerHTML = top + catChips + daysBar + `<article class="card"><p class="mut" style="text-align:center;margin:16px 0">ไม่พบสินค้าในหมวด “${esc(snCat)}”</p></article>`;
-    return;
-  }
-
-  // คำนวณยอดที่ถูกหยิบกิน/ใช้ และจำนวนวันที่นิ่ง
+const SR = { ok: 2, low: 1, out: 0 };
+function snScore(logs) {
+  let dec = 0, outs = 0;
+  logs.forEach(l => {
+    if (l.action === 'qty' && +l.old_value > +l.new_value) { dec++; if (+l.new_value <= 0) outs++; }
+    else if (l.action === 'status' && SR[l.old_value] > SR[l.new_value]) { dec++; if (l.new_value === 'out') outs++; }
+  });
+  return { dec, outs, pts: dec + 2 * outs };
+}
+function snItems(list) {
+  const cut = Date.now() - snDays * 864e5;
   const items = list.map(p => {
     const logs = SN.filter(l => l.product_id === p.id || l.product_name === p.name);
-    let consumed = 0;
-    logs.forEach(l => {
-      if (l.action === 'qty') {
-        const diff = (+l.old_value) - (+l.new_value);
-        if (diff > 0) consumed += diff;
-      } else if (l.action === 'status') {
-        if ((l.old_value === 'ok' && l.new_value !== 'ok') || (l.old_value === 'low' && l.new_value === 'out')) {
-          consumed += 1;
-        }
-      }
-    });
-    const lastLogTime = logs.length > 0 ? new Date(logs[0].created_at).getTime() : 0;
-    const daysInactive = lastLogTime > 0 ? Math.max(0, Math.floor((Date.now() - lastLogTime) / (1000 * 60 * 60 * 24))) : snDays;
-    return { ...p, consumed, daysInactive, logCount: logs.length };
+    const cur = snScore(logs.filter(l => Date.parse(l.created_at) >= cut)), prev = snScore(logs.filter(l => Date.parse(l.created_at) < cut));
+    const lt = logs.length ? Date.parse(logs[0].created_at) : 0;
+    const daysInactive = lt ? Math.max(0, Math.floor((Date.now() - lt) / 864e5)) : snDays;
+    return { ...p, consumed: cur.dec, outs: cur.outs, pts: cur.pts, prevPts: prev.pts, daysInactive, logCount: logs.length };
   });
-
-  // สินค้ายอดฮิต (เรียงตามยอดกิน/ใช้มากสุด)
-  const hot = items.filter(x => x.consumed > 0).sort((a, b) => b.consumed - a.consumed || b.logCount - a.logCount);
-
-  // สินค้าค้างสต๊อก (มีของเหลืออยู่ แต่คนไม่ค่อยกิน / นิ่งนานสุด)
-  const slow = items.filter(x => {
-    const hasStock = isSt(x) ? x.status !== 'out' : +x.qty > 0;
-    return hasStock && (x.consumed === 0 || x.daysInactive >= 5);
-  }).sort((a, b) => b.daysInactive - a.daysInactive || a.consumed - b.consumed);
-
-  const totalConsumed = items.reduce((s, x) => s + x.consumed, 0);
-  const topItem = hot.length ? hot[0].name : '-';
-
-  // แถบสรุปตัวเลข 3 กล่อง
-  const stats = `<div class="stats">
-    <div class="stat blue inert"><span class="sic">${IC.box}</span><b>${items.length}</b><span>ในหมวดนี้</span></div>
-    <div class="stat red inert"><span class="sic">${IC.warn}</span><b>${totalConsumed}</b><span>ยอดกิน/ใช้รวม</span></div>
-    <div class="stat grn inert"><span class="sic">${IC.ok}</span><b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(topItem)}</b><span>ฮิตอันดับ 1 🔥</span></div>
-  </div>`;
-
-  // HTML ส่วนของฮิต
-  const hotHtml = hot.length ? hot.map((x, idx) => {
-    const rankClass = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : 'rank-n';
-    const rankIcon = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
-    const avg = (x.consumed / snDays).toFixed(1);
-    const u = esc(x.unit || 'ชิ้น');
-    const isShort = stOf(x) !== 'ok';
-    const stockInfo = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${x.qty} / ขั้นต่ำ ${x.min_qty} ${u}`;
-    return `<article class="card sn-card is-hot">
-      <div class="row">
-        <div style="display:flex;align-items:center;gap:10px">
-          <span class="rank-badge ${rankClass}">${rankIcon}</span>
-          <div>
-            <h3>${esc(x.name)}</h3>
-            <p class="mut">${stockInfo}</p>
-          </div>
-        </div>
-        <div class="rt">
-          <span class="sn-tag hot">กินไป ${x.consumed} ${u}</span>
-        </div>
-      </div>
-      <p class="mut" style="font-size:13px;margin-top:6px">
-        เฉลี่ย ~${avg} ${u}/วัน ${isShort ? ' · <b class="v-out">ของใกล้หมด รีบเติม!</b>' : ' · <span style="color:var(--grn)">ออกไว แนะนำตุนเพิ่ม</span>'}
-      </p>
-      ${isShort ? `<button class="btn" style="margin-top:8px;padding:9px;font-size:14px" onclick="openTask('${x.id}')">สั่งงานเติมของด่วน</button>` : ''}
-    </article>`;
-  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ยังไม่พบรายการที่มีการหยิบกินในรอบ ${snDays} วันนี้</p></article>`;
-
-  // HTML ส่วนของค้างสต๊อก
-  const slowHtml = slow.length ? slow.map(x => {
-    const u = esc(x.unit || 'ชิ้น');
-    const stockInfo = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${x.qty} ${u}`;
-    const daysTxt = x.daysInactive >= snDays ? `${snDays}+ วัน` : `${x.daysInactive} วัน`;
-    return `<article class="card sn-card is-cold">
-      <div class="row">
-        <div>
-          <h3>${esc(x.name)}</h3>
-          <p class="mut">${stockInfo} · ${catOf(x)}</p>
-        </div>
-        <div class="rt">
-          <span class="sn-tag cold">ยอดนิ่ง ${daysTxt}</span>
-        </div>
-      </div>
-      <p class="mut" style="font-size:13px;margin-top:6px">
-        ❄️ คนกินน้อย (หยิบไปแค่ ${x.consumed} ${u}) · <b>ชะลอการสั่งซื้อ</b> หรือนำมาจัดโปร/ย้ายตำแหน่งวาง
-      </p>
-    </article>`;
-  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ทุกรายการมียอดการหยิบกินสม่ำเสมอ ไม่มีของค้างสต๊อก 👍</p></article>`;
-
-  $('#main').innerHTML = top + catChips + daysBar + stats +
-    `<div class="sn-sec"><h3>🔥 รายการยอดฮิต (คนกินเยอะ / แนะนำสั่งเพิ่ม)</h3><span class="mut" style="font-size:13px">${hot.length} รายการ</span></div>` + hotHtml +
-    `<div class="sn-sec" style="margin-top:22px"><h3>❄️ รายการค้างสต๊อก (คนไม่ค่อยกิน / ชะลอการสั่ง)</h3><span class="mut" style="font-size:13px">${slow.length} รายการ</span></div>` + slowHtml;
+  const rk = key => { const o = {}; items.filter(x => x[key] > 0).sort((a, b) => b[key] - a[key]).forEach((x, i) => o[x.id] = i + 1); return o; };
+  const now = rk('pts'), old = rk('prevPts');
+  items.forEach(x => x.mv = !now[x.id] ? null : !old[x.id] ? 'new' : old[x.id] - now[x.id]);
+  return { items, hot: items.filter(x => x.pts > 0).sort((a, b) => b.pts - a.pts || b.logCount - a.logCount) };
 }
-// แท็บ 'ความเห็น': ข้อความที่พนักงานส่งมา
+const mvTag = x => x.mv === 'new' ? '<span class="mv nw">NEW</span>' : x.mv > 0 ? `<span class="mv up">▲${x.mv}</span>` : x.mv < 0 ? `<span class="mv dn">▼${-x.mv}</span>` : '<span class="mv">–</span>';
+function renderSnack() {
+  const top = hvTabs();
+  if (SN === null) { $('#main').innerHTML = top + '<p class="mut" style="text-align:center;margin:24px 0">กำลังวิเคราะห์ความนิยม...</p>'; return; }
+  const catChoices = [...new Set(['ขนม', ...CATS, 'ทั้งหมด'])];
+  const catChips = `<div class="chips" style="margin-top:6px">${catChoices.map(c => `<button class="chip ${snCat === c ? 'on' : ''}" onclick="setSnCat('${esc(c)}')">${esc(c)}</button>`).join('')}</div>`;
+  const daysBar = `<div style="display:flex;align-items:center;justify-content:space-between;margin:4px 2px 14px"><span class="mut" style="font-size:13px">วิเคราะห์ย้อนหลัง:</span><div style="display:flex;gap:6px">${[7, 14, 30].map(d => `<button class="chip ${snDays === d ? 'on' : ''}" style="padding:4px 10px;font-size:12px" onclick="setSnDays(${d})">${d} วัน</button>`).join('')}</div></div>`;
+  const list = P.filter(p => snCat === 'ทั้งหมด' || catOf(p) === snCat);
+  if (!list.length) { $('#main').innerHTML = top + catChips + daysBar + `<article class="card"><p class="mut" style="text-align:center;margin:16px 0">ไม่พบสินค้าในหมวด “${esc(snCat)}”</p></article>`; return; }
+  const { items, hot } = snItems(list);
+  const slow = items.filter(x => (isSt(x) ? x.status !== 'out' : +x.qty > 0) && (x.consumed === 0 || x.daysInactive >= 5)).sort((a, b) => b.daysInactive - a.daysInactive || a.consumed - b.consumed);
+  const total = items.reduce((s, x) => s + x.consumed, 0), topItem = hot.length ? hot[0].name : '-';
+  const stats = `<div class="stats"><div class="stat blue inert"><span class="sic">${IC.box}</span><b>${items.length}</b><span>ในหมวดนี้</span></div><div class="stat red inert"><span class="sic">${IC.warn}</span><b>${total}</b><span>ครั้งที่ลดรวม</span></div><div class="stat grn inert"><span class="sic">${IC.ok}</span><b style="font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%">${esc(topItem)}</b><span>ฮิตอันดับ 1 🔥</span></div></div>`;
+  const hotHtml = hot.length ? hot.map((x, idx) => {
+    const rc = idx === 0 ? 'rank-1' : idx === 1 ? 'rank-2' : idx === 2 ? 'rank-3' : 'rank-n';
+    const ri = idx === 0 ? '🥇' : idx === 1 ? '🥈' : idx === 2 ? '🥉' : (idx + 1);
+    const avg = (x.consumed / snDays).toFixed(1), isShort = stOf(x) !== 'ok';
+    const info = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${fmtQ(x)} / ขั้นต่ำ ${x.min_qty}`;
+    return `<article class="card sn-card is-hot"><div class="row"><div style="display:flex;align-items:center;gap:10px"><span class="rank-badge ${rc}">${ri}</span><div><h3>${esc(x.name)}</h3><p class="mut">${info}</p></div></div><div class="rt"><span class="sn-tag hot">ลด ${x.consumed} ครั้ง · หมด ${x.outs} ครั้ง</span>${mvTag(x)}</div></div>
+    <p class="mut" style="font-size:13px;margin-top:6px">เฉลี่ย ~${avg} ครั้ง/วัน ${isShort ? ' · <b class="v-out">ของใกล้หมด รีบเติม!</b>' : ' · <span style="color:var(--grn)">ออกไว แนะนำตุนเพิ่ม</span>'}</p></article>`;
+  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ยังไม่พบรายการที่ลดลงในรอบ ${snDays} วันนี้</p></article>`;
+  const slowHtml = slow.length ? slow.map(x => {
+    const info = isSt(x) ? 'สถานะ: ' + STL[x.status || 'ok'] : `คงเหลือ ${fmtQ(x)}`;
+    const dt = x.daysInactive >= snDays ? `${snDays}+ วัน` : `${x.daysInactive} วัน`;
+    return `<article class="card sn-card is-cold"><div class="row"><div><h3>${esc(x.name)}</h3><p class="mut">${info} · ${esc(catOf(x))}</p></div><div class="rt"><span class="sn-tag cold">ยอดนิ่ง ${dt}</span></div></div><p class="mut" style="font-size:13px;margin-top:6px">❄️ ลดน้อย (${x.consumed} ครั้ง) · <b>ชะลอการสั่งซื้อ</b> หรือนำมาจัดโปร/ย้ายตำแหน่งวาง</p></article>`;
+  }).join('') : `<article class="card"><p class="mut" style="text-align:center;padding:12px 0">ทุกรายการมีการเคลื่อนไหวสม่ำเสมอ ไม่มีของค้างสต๊อก 👍</p></article>`;
+  $('#main').innerHTML = top + catChips + daysBar + stats +
+    `<div class="sn-sec"><h3>🔥 อันดับยอดฮิต (ลดบ่อย / หมดบ่อย)</h3><span class="mut" style="font-size:13px">${hot.length} รายการ</span></div>` + hotHtml +
+    `<div class="sn-sec" style="margin-top:22px"><h3>❄️ รายการค้างสต๊อก</h3><span class="mut" style="font-size:13px">${slow.length} รายการ</span></div>` + slowHtml;
+}
+// ===== ความเห็น =====
 function renderFb() {
   $('#main').innerHTML = F.length ? F.map(x => `<article class="card"><div class="row"><h3>${esc(who(x.user_id))}</h3><span class="tag ${x.status === 'done' ? 'grn' : 'amb'}">${x.status === 'done' ? 'อ่านแล้ว' : 'ใหม่'}</span></div><p style="margin:6px 0">${esc(x.message)}</p><p class="mut">${new Date(x.created_at).toLocaleDateString('th-TH', { day: 'numeric', month: 'short' })}</p><div class="row">${x.status === 'todo' ? `<button class="link" style="color:var(--acc)" onclick="seenFb('${x.id}')">ทำเครื่องหมายว่าอ่านแล้ว</button>` : '<span></span>'}<button class="link red" onclick="delFb('${x.id}')">ลบ</button></div></article>`).join('') : '<p class="mut">ยังไม่มีความเห็นจากพนักงาน</p>';
 }
 async function seenFb(id) { if (ok(await sb.from('feedback').update({ status: 'done' }).eq('id', id))) load(); }
 async function delFb(id) { if (confirm('ลบความเห็นนี้?') && ok(await sb.from('feedback').delete().eq('id', id))) load(); }
+// ===== สินค้า (แสดงหมวด + กรองตามหมวด) =====
+let pcat = '', pkeys = [];
+const setPcat = i => { pcat = i < 0 ? '' : pkeys[i]; renderProd(); };
 function renderProd() {
-  $('#main').innerHTML = `<button class="btn add" onclick="openProd()">เพิ่มสินค้า</button>` +
-    (P.length ? P.map(p => { const bad = st(p) !== 'ok'; return `<article class="card" onclick="openProd('${p.id}')"><div class="row"><h3>${esc(p.name)}</h3><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : p.qty + ' ' + esc(p.unit)}</span></div></div><p class="mut">${isSt(p) ? 'นับตามสถานะ' : 'ขั้นต่ำ ' + p.min_qty}</p></article>`; }).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
+  pkeys = [...new Set(P.map(catOf))].sort((a, b) => a === NOCAT ? 1 : b === NOCAT ? -1 : a.localeCompare(b, 'th'));
+  if (pcat && !pkeys.includes(pcat)) pcat = '';
+  const chips = `<div class="chips"><button class="chip ${pcat ? '' : 'on'}" onclick="setPcat(-1)">ทั้งหมด ${P.length}</button>${pkeys.map((k, i) => `<button class="chip ${pcat === k ? 'on' : ''}" onclick="setPcat(${i})">${esc(k)} ${P.filter(p => catOf(p) === k).length}</button>`).join('')}</div>`;
+  const card = p => `<article class="card" onclick="openProd('${p.id}')"><div class="row"><div><h3>${esc(p.name)}</h3><p class="mut">${esc(catOf(p))} · ${isSt(p) ? 'นับตามสถานะ' : (isPk(p) ? `แพ็คละ ${p.pack_size} ${esc(p.unit)} · ` : '') + 'ขั้นต่ำ ' + p.min_qty}</p></div><div class="rt"><span class="tag ${TAGC[st(p)]}">${isSt(p) ? STL[p.status || 'ok'] : (isPk(p) ? Math.floor(+p.qty / +p.pack_size) + ' แพ็ค' : p.qty + ' ' + esc(p.unit))}</span></div></div></article>`;
+  const groups = pcat ? [pcat] : pkeys;
+  $('#main').innerHTML = `<button class="btn add" onclick="openProd()">เพิ่มสินค้า</button>` + (P.length ? chips +
+    groups.map(k => `<div class="sn-sec"><h3>${esc(k)}</h3></div>` + P.filter(p => catOf(p) === k).map(card).join('')).join('') : '<p class="mut">ยังไม่มีสินค้า กด “เพิ่มสินค้า” เพื่อเริ่ม</p>');
 }
-function renderTask() {
-  $('#main').innerHTML = `<button class="btn add" onclick="openTask()">สั่งงานใหม่</button>` +
-    (T.length ? T.map(t => `<article class="card"><div class="row"><div><h3>${esc(t.title)}</h3><p class="mut">มอบให้ ${esc(who(t.assigned_to))}${t.note ? ' · ' + esc(t.note) : ''}</p></div><span class="tag ${t.status === 'done' ? 'grn' : 'amb'}">${t.status === 'done' ? 'เสร็จแล้ว' : 'รอทำ'}</span></div><button class="link red" onclick="delTask('${t.id}')">ลบงาน</button></article>`).join('') : '<p class="mut">ยังไม่มีงาน กด “สั่งงานใหม่” เพื่อมอบหมาย</p>');
+// ===== ผู้ใช้ =====
+function renderUsers() {
+  $('#main').innerHTML = `<button class="btn add" onclick="openUser()">เพิ่มผู้ใช้</button>` +
+    S.map(u => `<article class="card"><div class="row"><h3>${esc(u.name)}</h3><span class="tag ${u.role === 'admin' ? 'amb' : 'grn'}">${u.role === 'admin' ? 'แอดมิน' : 'พนักงาน'}</span></div><div class="row"><button class="link" style="color:var(--acc)" onclick="setPw('${u.id}')">เปลี่ยนรหัสผ่าน</button><button class="link red" onclick="delUser('${u.id}')">ลบผู้ใช้</button></div></article>`).join('');
 }
-// ฟอร์มเด้งจากด้านล่าง: ส่ง HTML ของช่องกรอก + ฟังก์ชันบันทึก
+function openUser() {
+  sheet(`<h2>เพิ่มผู้ใช้</h2>
+  <label>ชื่อที่แสดง<input name="name" required></label>
+  <label>อีเมล (ใช้ล็อกอิน)<input name="email" type="email" required autocomplete="off"></label>
+  <label>รหัสผ่าน (อย่างน้อย 6 ตัว)<input name="password" type="text" minlength="6" required autocomplete="off"></label>
+  <label>สิทธิ์<select name="role"><option value="staff">พนักงาน</option><option value="admin">แอดมิน</option></select></label>`,
+    async v => ok(await sb.rpc('admin_create_user', { p_email: v.email, p_password: v.password, p_name: v.name, p_role: v.role })));
+}
+async function delUser(id) { if (confirm('ลบผู้ใช้นี้?') && ok(await sb.rpc('admin_delete_user', { p_id: id }))) { toast('ลบแล้ว'); load(); } }
+async function setPw(id) { const w = prompt('รหัสผ่านใหม่ (อย่างน้อย 6 ตัว)'); if (w && ok(await sb.rpc('admin_set_password', { p_id: id, p_password: w }))) toast('เปลี่ยนรหัสผ่านแล้ว'); }
+// ===== ฟอร์ม =====
 function sheet(h, fn) {
   const d = $('#sheet');
   d.innerHTML = `<form id="f">${h}<div class="acts"><button type="button" class="btn ghost" onclick="$('#sheet').close()">ยกเลิก</button><button class="btn">บันทึก</button></div></form>`;
   $('#f').onsubmit = async e => { e.preventDefault(); if (await fn(Object.fromEntries(new FormData(e.target)))) { d.close(); toast('บันทึกแล้ว'); load(); } };
   d.showModal();
 }
-// สลับช่องกรอกตามวิธีนับ: จำนวน (คงเหลือ+ขั้นต่ำ) หรือ สถานะ
 const modeUi = m => { $('#mq').hidden = m === 'status'; $('#ms').hidden = m !== 'status'; };
-// ฟอร์มเพิ่ม/แก้สินค้า (ชื่อ, วิธีนับ, คงเหลือ+ขั้นต่ำ หรือ สถานะ, หน่วย, หมวดหมู่)
-// หน่วยที่เลือกได้แก้ที่ UNITS ใน common.js
 function openProd(id) {
   const p = P.find(x => x.id === id) || { name: '', unit: 'ชิ้น', qty: 0, min_qty: 0, track_mode: 'qty', status: 'ok' };
   const S_ = isSt(p), other = !!p.unit && !UNITS.includes(p.unit);
@@ -427,8 +361,9 @@ function openProd(id) {
   <label>วิธีนับสินค้า<select name="track_mode" onchange="modeUi(this.value)">
     <option value="qty" ${S_ ? '' : 'selected'}>นับเป็นจำนวน (เทียบกับขั้นต่ำ)</option>
     <option value="status" ${S_ ? 'selected' : ''}>นับเป็นสถานะ (มีพอ / ใกล้หมด / หมด)</option></select></label>
-  <div id="mq" ${S_ ? 'hidden' : ''}><div class="two"><label>คงเหลือ<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
-  <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div></div>
+  <div id="mq" ${S_ ? 'hidden' : ''}><div class="two"><label>คงเหลือ (นับเป็นชิ้น)<input name="qty" type="number" step="any" inputmode="decimal" value="${p.qty}"></label>
+  <label>ขั้นต่ำที่ต้องมี<input name="min_qty" type="number" step="any" inputmode="decimal" value="${p.min_qty}"></label></div>
+  <label>ชิ้นต่อ 1 แพ็ค (เว้นว่างถ้าไม่นับเป็นแพ็ค)<input name="pack_size" type="number" step="any" min="0" inputmode="decimal" value="${p.pack_size || ''}"></label></div>
   <label id="ms" ${S_ ? '' : 'hidden'}>สถานะปัจจุบัน<select name="status">${['ok', 'low', 'out'].map(s => `<option value="${s}" ${(p.status || 'ok') === s ? 'selected' : ''}>${STL[s]}</option>`).join('')}</select></label>
   <label>หน่วย<select name="unit" onchange="$('#uo').hidden=this.value!=='__other'">${UNITS.map(u => `<option ${p.unit === u ? 'selected' : ''}>${u}</option>`).join('')}<option value="__other" ${other ? 'selected' : ''}>อื่นๆ</option></select></label>
   <label id="uo" ${other ? '' : 'hidden'}>ระบุหน่วย<input name="unit_other" value="${other ? esc(p.unit) : ''}" placeholder="เช่น กล่อง, ลัง"></label>
@@ -437,21 +372,9 @@ function openProd(id) {
     async v => {
       v.unit = v.unit === '__other' ? ((v.unit_other || '').trim() || 'ชิ้น') : v.unit;
       delete v.unit_other;
-      // โหมดสถานะ: ไม่ส่ง qty/min_qty (คงค่าเดิมในฐานข้อมูล) / โหมดจำนวน: รีเซ็ตสถานะเป็น ok
+      v.pack_size = v.track_mode === 'qty' && v.pack_size ? +v.pack_size : null;
       if (v.track_mode === 'status') { delete v.qty; delete v.min_qty; } else { v.status = 'ok'; }
       return ok(id ? await sb.from('products').update(v).eq('id', id) : await sb.from('products').insert(v));
     });
 }
 async function delProd(id) { if (confirm('ลบสินค้านี้?') && ok(await sb.from('products').delete().eq('id', id))) { $('#sheet').close(); load(); } }
-async function delTask(id) { if (confirm('ลบงานนี้?') && ok(await sb.from('tasks').delete().eq('id', id))) load(); }
-// ฟอร์มมอบงาน: ตัวเลือก 'มอบให้' ดึงรายชื่อจาก S (ตาราง profiles)
-// อยากให้มีชื่อใหม่ในรายการ ให้เพิ่มผู้ใช้ใน Supabase ก่อน
-function openTask(pid) {
-  const p = P.find(x => x.id === pid);
-  sheet(`<h2>สั่งงานใหม่</h2>
-  <label>งานที่ต้องทำ<input name="title" required value="${p ? 'เติม ' + esc(p.name) : ''}"></label>
-  <label>สินค้าที่เกี่ยวข้อง<select name="product_id"><option value="">ไม่ระบุ</option>${P.map(x => `<option value="${x.id}" ${x.id === pid ? 'selected' : ''}>${esc(x.name)}</option>`).join('')}</select></label>
-  <label>มอบให้<select name="assigned_to" required>${S.map(x => `<option value="${x.id}">${esc(x.name)}${x.role === 'admin' ? ' (แอดมิน)' : ''}</option>`).join('')}</select></label>
-  <label>หมายเหตุ<textarea name="note" rows="2"></textarea></label>`,
-    async v => { v.product_id = v.product_id || null; return ok(await sb.from('tasks').insert(v)); });
-}
