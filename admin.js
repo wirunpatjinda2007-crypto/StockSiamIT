@@ -160,10 +160,26 @@ async function genWeekReport() {
 const stTxt = v => `<b class="v-${esc(v)}">${esc(STL[v] || v)}</b>`;
 function hDesc(x) {
   const u = esc(x.unit || '');
-  if (x.action === 'qty') { const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
-    return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>`; }
+  const pr = P.find(p => p.id === x.product_id || p.name === x.product_name);
+  const ps = +(x.pack_size || (pr && pr.pack_size) || 0);
+  if (x.action === 'qty') {
+    const a = +x.old_value, b = +x.new_value, d = +(b - a).toFixed(2);
+    let pkInfo = '';
+    if (ps > 0) {
+      const bPk = fmtPack(b, ps, u);
+      const aPk = fmtPack(a, ps, u);
+      pkInfo = `<span class="mut" style="display:block;font-size:13px;margin-top:2px">📦 รวมเป็น <b>${bPk}</b> <span style="opacity:.8">(จาก ${aPk} · แพ็คละ ${ps} ${u})</span></span>`;
+    }
+    return `${a} → <b>${b}</b> ${u}<span class="dlt ${d > 0 ? 'up' : 'dn'}">${d > 0 ? '+' : ''}${d}</span>${pkInfo}`;
+  }
   if (x.action === 'status') return `${stTxt(x.old_value)} → ${stTxt(x.new_value)}`;
-  if (x.action === 'add') return 'เพิ่มสินค้าใหม่' + (x.new_value ? ' · เริ่มที่ ' + (x.track_mode === 'status' ? esc(STL[x.new_value] || x.new_value) : (+x.new_value) + ' ' + u) : '');
+  if (x.action === 'add') {
+    let addPk = '';
+    if (ps > 0 && x.new_value && x.track_mode !== 'status') {
+      addPk = ` · รวม ${fmtPack(+x.new_value, ps, u)}`;
+    }
+    return 'เพิ่มสินค้าใหม่' + (x.new_value ? ' · เริ่มที่ ' + (x.track_mode === 'status' ? esc(STL[x.new_value] || x.new_value) : (+x.new_value) + ' ' + u + addPk) : '');
+  }
   if (x.action === 'edit') return x.detail ? esc(x.detail).replace(/\n/g, '<br>') : 'แก้ไขข้อมูลสินค้า';
   return 'ลบสินค้าออกจากระบบ';
 }
